@@ -146,6 +146,7 @@ export default function App() {
         currentUser={currentUser}
         currentRole={currentRole}
         currentStaff={currentStaff}
+        staffList={staffList}
         onSwitchRole={(role) => {
           setCurrentRole(role);
           if (role === 'care_manager') {
