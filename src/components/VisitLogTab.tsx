@@ -22,6 +22,7 @@ import {
   Maximize2
 } from 'lucide-react';
 import { ElderlyPatient, VisitRecord, CaregiverUser } from '../types';
+import { compressImageFile, handleImageFallback, DEFAULT_VISIT_PHOTO, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
 
 interface VisitLogTabProps {
   patients: ElderlyPatient[];
@@ -91,6 +92,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
     'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=600&auto=format&fit=crop&q=80',
   ]);
   const [isPhotoZoomOpen, setIsPhotoZoomOpen] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
 
   // GPS Coordinates (Default to ธาตุทอง อ.สว่างแดนดิน)
   const [coordinates, setCoordinates] = useState({
@@ -274,18 +276,26 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
     }
   };
 
-  // Add Photo by file input or simulated hotlink
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Add Photo by file input or camera upload (compressed for seamless mobile support)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const newUrls: string[] = [];
-      Array.from(files).forEach((file) => {
-        const url = URL.createObjectURL(file);
-        newUrls.push(url);
-      });
-      setPhotos((prev) => [...prev, ...newUrls]);
-      setFeedbackMessage(`เพิ่มรูปภาพหลักฐานการเยี่ยม ${files.length} ภาพเรียบร้อย`);
-      setTimeout(() => setFeedbackMessage(null), 3000);
+      setIsUploadingPhoto(true);
+      try {
+        const newUrls: string[] = [];
+        for (let i = 0; i < files.length; i++) {
+          const dataUrl = await compressImageFile(files[i], 1024, 1024, 0.82);
+          newUrls.push(dataUrl);
+        }
+        setPhotos((prev) => [...prev, ...newUrls]);
+        setFeedbackMessage(`✓ เพิ่มรูปภาพหลักฐานการเยี่ยม ${files.length} ภาพเรียบร้อย (บีบอัดพร้อมดูบนมือถือ)`);
+        setTimeout(() => setFeedbackMessage(null), 3500);
+      } catch (err) {
+        console.error('Error processing image upload:', err);
+      } finally {
+        setIsUploadingPhoto(false);
+        e.target.value = '';
+      }
     }
   };
 
@@ -954,6 +964,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                     src={url}
                     alt={`Visit photo ${idx + 1}`}
                     referrerPolicy="no-referrer"
+                    onError={(e) => handleImageFallback(e, DEFAULT_VISIT_PHOTO)}
                     className="w-full h-full object-cover transition-transform group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
@@ -980,11 +991,20 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                 </div>
               ))}
 
+              {/* Uploading Photo Indicator */}
+              {isUploadingPhoto && (
+                <div className="border-2 border-dashed border-teal-400 bg-teal-50/70 rounded-xl aspect-4/3 flex flex-col items-center justify-center text-teal-800 p-2 text-center animate-pulse">
+                  <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mb-1"></div>
+                  <span className="text-xs font-bold">กำลังประมวลผลภาพ...</span>
+                  <span className="text-[9.5px] text-teal-600 mt-0.5">บีบอัดสำหรับมือถือ</span>
+                </div>
+              )}
+
               {/* Upload Drop Target / Trigger */}
               <label className="border-2 border-dashed border-teal-300 hover:border-teal-500 rounded-xl aspect-4/3 flex flex-col items-center justify-center text-teal-700 bg-teal-50/50 hover:bg-teal-50 cursor-pointer transition-colors p-2 text-center">
                 <Camera className="w-6 h-6 mb-1 text-teal-600" />
                 <span className="text-xs font-bold font-['Prompt',sans-serif]">ถ่ายภาพ / อัปโหลด</span>
-                <span className="text-[10px] text-slate-400 mt-0.5">รองรับ JPG, PNG</span>
+                <span className="text-[10px] text-slate-400 mt-0.5">กล้องมือถือ / คลังภาพ</span>
                 <input
                   type="file"
                   multiple

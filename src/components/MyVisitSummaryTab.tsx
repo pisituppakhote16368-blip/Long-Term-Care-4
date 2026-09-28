@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ElderlyPatient, CaregiverUser } from '../types';
 import { CURRENT_CARE_MANAGER } from '../data/mockData';
+import { handleImageFallback, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
 
 interface MyVisitSummaryTabProps {
   currentUser: CaregiverUser;
@@ -179,8 +180,10 @@ export const MyVisitSummaryTab: React.FC<MyVisitSummaryTabProps> = ({
                     <td className="px-4 py-3.5">
                       <div className="flex items-center space-x-3">
                         <img
-                          src={patient.avatarUrl}
+                          src={patient.avatarUrl || DEFAULT_PATIENT_AVATAR}
                           alt={patient.name}
+                          referrerPolicy="no-referrer"
+                          onError={(e) => handleImageFallback(e, DEFAULT_PATIENT_AVATAR)}
                           className="w-10 h-10 rounded-xl object-cover ring-1 ring-slate-200"
                         />
                         <div>

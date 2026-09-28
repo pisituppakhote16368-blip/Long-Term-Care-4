@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, UserPlus, Save, AlertTriangle, Calendar, UserCog } from 'lucide-react';
+import { X, UserPlus, Save, AlertTriangle, Calendar, UserCog, Camera } from 'lucide-react';
 import { ElderlyPatient, LTCGroup, FISCAL_YEARS_LIST, StaffMember } from '../types';
 import { INITIAL_STAFF_MEMBERS } from '../data/mockData';
+import { compressImageFile, handleImageFallback, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
 
 interface AddElderlyModalProps {
   isOpen: boolean;
@@ -41,6 +42,8 @@ export const AddElderlyModal: React.FC<AddElderlyModalProps> = ({
   });
 
   const [diseaseInput, setDiseaseInput] = useState('');
+  const [customAvatar, setCustomAvatar] = useState<string>('');
+  const [isCompressingAvatar, setIsCompressingAvatar] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -74,9 +77,9 @@ export const AddElderlyModal: React.FC<AddElderlyModalProps> = ({
         relation: formData.emergencyRelation || 'บุตร',
         phone: formData.emergencyPhone || '08X-XXX-XXXX',
       },
-      avatarUrl: formData.gender === 'หญิง'
+      avatarUrl: customAvatar.trim() || (formData.gender === 'หญิง'
         ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80'
-        : 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
+        : 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80'),
       lastVisitDate: 'ยังไม่มีประวัติเยี่ยม',
       monthlyQuota: formData.ltcGroup === 1 ? 2 : formData.ltcGroup === 2 ? 4 : formData.ltcGroup === 3 ? 4 : 7,
       visitsThisMonth: 0,
@@ -134,6 +137,67 @@ export const AddElderlyModal: React.FC<AddElderlyModalProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
+          {/* Photo Upload Section */}
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center gap-4">
+            <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-200 border-2 border-teal-500 shrink-0 relative flex items-center justify-center">
+              <img
+                src={customAvatar || (formData.gender === 'หญิง'
+                  ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80'
+                  : 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80')}
+                alt="รูปผู้สูงอายุ"
+                referrerPolicy="no-referrer"
+                onError={(e) => handleImageFallback(e, DEFAULT_PATIENT_AVATAR)}
+                className="w-full h-full object-cover"
+              />
+              {isCompressingAvatar && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 text-center sm:text-left">
+              <div className="font-bold text-slate-800 text-xs mb-0.5">
+                รูปถ่ายผู้สูงอายุ / ผู้มีภาวะพึ่งพิง
+              </div>
+              <p className="text-[11px] text-slate-500 mb-2">
+                สามารถถ่ายภาพจากกล้องมือถือ หรือเลือกไฟล์รูปภาพจากอุปกรณ์ (บีบอัดอัตโนมัติ)
+              </p>
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-300 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs">
+                <Camera className="w-3.5 h-3.5 text-teal-700" />
+                <span>ถ่ายภาพ / เลือกรูปจากมือถือ</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setIsCompressingAvatar(true);
+                      try {
+                        const dataUrl = await compressImageFile(file, 800, 800, 0.85);
+                        setCustomAvatar(dataUrl);
+                      } catch (err) {
+                        console.error(err);
+                      } finally {
+                        setIsCompressingAvatar(false);
+                      }
+                    }
+                  }}
+                />
+              </label>
+              {customAvatar && (
+                <button
+                  type="button"
+                  onClick={() => setCustomAvatar('')}
+                  className="ml-2 text-[11px] text-rose-600 hover:text-rose-800 underline"
+                >
+                  ใช้รูปเริ่มต้น
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-slate-700 font-semibold mb-1">

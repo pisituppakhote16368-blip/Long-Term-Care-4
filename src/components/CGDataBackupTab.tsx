@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { CaregiverUser, ElderlyPatient, VisitRecord, StaffMember } from '../types';
 import { INITIAL_STAFF_MEMBERS, HOSPITAL_DIRECTOR } from '../data/mockData';
+import { compressImageFile, handleImageFallback, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
 
 const THAT_THONG_VILLAGES = [
   'หมู่ 1 บ้านธาตุทอง',
@@ -253,14 +254,13 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Handle local image file upload and convert to base64
-  const handleFileUploadAsDataUrl = (e: React.ChangeEvent<HTMLInputElement>, targetType: 'staff' | 'director' | 'patient') => {
+  // Handle local image file upload and convert to compressed base64 for mobile compatibility
+  const handleFileUploadAsDataUrl = async (e: React.ChangeEvent<HTMLInputElement>, targetType: 'staff' | 'director' | 'patient') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const result = uploadEvent.target?.result as string;
+    try {
+      const result = await compressImageFile(file, 800, 800, 0.85);
       if (targetType === 'staff') {
         setFormAvatarUrl(result);
       } else if (targetType === 'director') {
@@ -268,8 +268,9 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
       } else if (targetType === 'patient') {
         setTempPatientAvatarUrl(result);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Error compressing image:', err);
+    }
   };
 
   // Force Sync
@@ -1152,6 +1153,7 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
                   src={tempPatientAvatarUrl || editingPatientPhoto.avatarUrl}
                   alt={editingPatientPhoto.name}
                   referrerPolicy="no-referrer"
+                  onError={(e) => handleImageFallback(e, DEFAULT_PATIENT_AVATAR)}
                   className="w-full h-full object-cover"
                 />
               </div>

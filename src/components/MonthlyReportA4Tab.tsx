@@ -12,11 +12,13 @@ import {
   ChevronRight,
   ArrowLeft,
   ArrowUp,
-  Search
+  Search,
+  Camera
 } from 'lucide-react';
 import { ElderlyPatient, VisitRecord, CaregiverUser, StaffMember } from '../types';
 import { CURRENT_CARE_MANAGER, HOSPITAL_DIRECTOR, INITIAL_STAFF_MEMBERS } from '../data/mockData';
 import { GarudaEmblem } from './GarudaEmblem';
+import { compressImageFile, handleImageFallback, DEFAULT_PATIENT_AVATAR, DEFAULT_VISIT_PHOTO } from '../utils/imageUtils';
 
 interface MonthlyReportA4TabProps {
   patients: ElderlyPatient[];
@@ -841,6 +843,7 @@ export const MonthlyReportA4Tab: React.FC<MonthlyReportA4TabProps> = ({
                     src={item.photo}
                     alt={item.patientName}
                     referrerPolicy="no-referrer"
+                    onError={(e) => handleImageFallback(e, DEFAULT_PATIENT_AVATAR)}
                     className="w-full h-full object-cover"
                   />
                   {/* Badge index */}
@@ -891,13 +894,35 @@ export const MonthlyReportA4Tab: React.FC<MonthlyReportA4TabProps> = ({
         {editingPhotoIndex !== null && (
           <div className="no-print mt-3 p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs flex flex-col sm:flex-row items-center gap-3">
             <div className="flex-1 w-full space-y-1.5">
-              <div className="font-bold text-teal-900">
-                แก้ไขรูปที่ {editingPhotoIndex + 1}: {evidencePhotos[editingPhotoIndex].patientName}
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-teal-900">
+                  แก้ไขรูปที่ {editingPhotoIndex + 1}: {evidencePhotos[editingPhotoIndex].patientName}
+                </div>
+                <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-teal-300 rounded-lg text-[11px] font-bold text-teal-800 hover:bg-teal-100 cursor-pointer shadow-2xs">
+                  <Camera className="w-3.5 h-3.5 text-teal-700" />
+                  <span>ถ่ายภาพ / อัปโหลดจากมือถือ</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        try {
+                          const dataUrl = await compressImageFile(file, 800, 800, 0.82);
+                          setTempPhotoUrl(dataUrl);
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }
+                    }}
+                  />
+                </label>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <input
                   type="text"
-                  placeholder="URL รูปภาพใหม่..."
+                  placeholder="URL รูปภาพ หรือเลือกรูปจากมือถือด้านบน..."
                   value={tempPhotoUrl}
                   onChange={(e) => setTempPhotoUrl(e.target.value)}
                   className="w-full text-xs p-1.5 border border-slate-300 rounded-lg bg-white"

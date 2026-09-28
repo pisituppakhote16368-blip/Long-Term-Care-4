@@ -88,6 +88,17 @@ export default function App() {
     setTargetPatientIdForVisit(newPatient.id);
   };
 
+  const handleDeletePatient = (patientId: string) => {
+    setPatients((prev) => prev.filter((p) => p.id !== patientId));
+    if (targetPatientIdForVisit === patientId) {
+      setPatients((prev) => {
+        const remaining = prev.filter((p) => p.id !== patientId);
+        setTargetPatientIdForVisit(remaining[0]?.id || '');
+        return remaining;
+      });
+    }
+  };
+
   const handleNavigateToVisitLog = (patientId: string) => {
     setTargetPatientIdForVisit(patientId);
     setActiveTab('visit-log');
@@ -222,6 +233,7 @@ export default function App() {
             onOpenAddElderly={() => setIsAddElderlyOpen(true)}
             onNavigateToVisitLog={handleNavigateToVisitLog}
             onUpdatePatient={handleUpdatePatient}
+            onDeletePatient={handleDeletePatient}
           />
         )}
 
