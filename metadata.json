@@ -1,0 +1,7 @@
+{
+  "name": "ระบบส่งงานผู้ดูแลผู้สูงอายุ (Caregiver: CG) - LTC Portal",
+  "description": "ระบบส่งงานผู้ดูแลผู้สูงอายุระยะยาว (LTC Portal) สำหรับ Caregiver (CG) และ Care Manager (CM) รพ.สต.ธาตุทอง อ.สว่างแดนดิน จ.สกลนคร รองรับการบันทึกการออกเยี่ยม สัญญาณชีพ ADL พิกัด GPS ภาพถ่าย รายงานประจำเดือน A4 และทะเบียนผู้สูงอายุ",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
