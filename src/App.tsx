@@ -29,6 +29,7 @@ import {
   savePatientToFirestore,
   deletePatientFromFirestore,
   saveVisitToFirestore,
+  deleteVisitFromFirestore,
   saveAllStaffToFirestore
 } from './services/firestoreService';
 import { testConnection } from './firebase';
@@ -213,6 +214,94 @@ export default function App() {
     }
   };
 
+  // Delete visit record and decrement patient visitsThisMonth
+  const handleDeleteVisit = async (visitId: string, elderlyId: string) => {
+    // 1. Remove visit from state
+    setVisits((prev) => prev.filter((v) => v.id !== visitId));
+
+    // 2. Decrement patient's visitsThisMonth
+    let updatedPatient: ElderlyPatient | null = null;
+    setPatients((prev) =>
+      prev.map((p) => {
+        if (p.id === elderlyId) {
+          updatedPatient = {
+            ...p,
+            visitsThisMonth: Math.max(0, (p.visitsThisMonth || 0) - 1),
+          };
+          return updatedPatient;
+        }
+        return p;
+      })
+    );
+
+    // 3. Update caregiver statistics
+    setCurrentUser((prev) => ({
+      ...prev,
+      completedVisits: Math.max(0, prev.completedVisits - 1),
+      pendingVisits: prev.pendingVisits + 1,
+    }));
+
+    // 4. Delete from Firestore & update patient
+    try {
+      await deleteVisitFromFirestore(visitId);
+      if (updatedPatient) {
+        await savePatientToFirestore(updatedPatient);
+      }
+    } catch (e) {
+      console.error('Failed to delete visit from Firestore:', e);
+    }
+  };
+
+  // Adjust / Decrement visitsThisMonth directly for a patient
+  const handleUpdatePatientVisits = async (patientId: string, newCount: number) => {
+    let diff = 0;
+    let updatedPatient: ElderlyPatient | null = null;
+    setPatients((prev) =>
+      prev.map((p) => {
+        if (p.id === patientId) {
+          diff = (p.visitsThisMonth || 0) - Math.max(0, newCount);
+          updatedPatient = {
+            ...p,
+            visitsThisMonth: Math.max(0, newCount),
+          };
+          return updatedPatient;
+        }
+        return p;
+      })
+    );
+
+    // If decreasing, also clean up latest visit records for this patient from visits array
+    if (diff > 0) {
+      const patientVisits = visits.filter((v) => v.elderlyId === patientId);
+      const visitsToRemove = patientVisits.slice(0, diff);
+      if (visitsToRemove.length > 0) {
+        const removeIds = new Set(visitsToRemove.map((v) => v.id));
+        setVisits((prev) => prev.filter((v) => !removeIds.has(v.id)));
+        for (const v of visitsToRemove) {
+          try {
+            await deleteVisitFromFirestore(v.id);
+          } catch (e) {
+            console.error('Failed to delete visit record:', e);
+          }
+        }
+      }
+
+      setCurrentUser((prev) => ({
+        ...prev,
+        completedVisits: Math.max(0, prev.completedVisits - diff),
+        pendingVisits: prev.pendingVisits + diff,
+      }));
+    }
+
+    if (updatedPatient) {
+      try {
+        await savePatientToFirestore(updatedPatient);
+      } catch (e) {
+        console.error('Failed to update patient visits in Firestore:', e);
+      }
+    }
+  };
+
   const handleNavigateToVisitLog = (patientId: string) => {
     setTargetPatientIdForVisit(patientId);
     setActiveTab('visit-log');
@@ -356,6 +445,8 @@ export default function App() {
             currentRole={currentRole as any}
             onNavigateToVisitLog={handleNavigateToVisitLog}
             onViewReport={handleNavigateToMonthlyReport}
+            onDeleteVisit={handleDeleteVisit}
+            onUpdatePatientVisits={handleUpdatePatientVisits}
           />
         )}
 

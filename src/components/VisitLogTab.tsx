@@ -19,10 +19,43 @@ import {
   Sparkles,
   Layers,
   Activity,
-  Maximize2
+  Maximize2,
+  Lock,
+  CalendarCheck
 } from 'lucide-react';
 import { ElderlyPatient, VisitRecord, CaregiverUser } from '../types';
 import { compressImageFile, handleImageFallback, DEFAULT_VISIT_PHOTO, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
+
+// Helper functions for date and time calculations in local timezone
+const getTodayDateString = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getCurrentTimeString = () => {
+  const d = new Date();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const formatThaiDate = (dateStr: string) => {
+  try {
+    const [y, m, d] = dateStr.split('-');
+    const months = [
+      'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+    ];
+    const numY = parseInt(y, 10);
+    const thaiYear = numY > 2400 ? numY : numY + 543;
+    return `${parseInt(d, 10)} ${months[parseInt(m, 10) - 1]} ${thaiYear}`;
+  } catch {
+    return dateStr;
+  }
+};
 
 interface VisitLogTabProps {
   patients: ElderlyPatient[];
@@ -50,14 +83,16 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
 
   const selectedPatient = patients.find((p) => p.id === selectedPatientId) || patients[0];
 
-  // Visit Form State
-  const now = new Date();
-  const [visitDate, setVisitDate] = useState<string>(
-    now.toISOString().split('T')[0]
-  );
-  const [visitTime, setVisitTime] = useState<string>(
-    now.toTimeString().slice(0, 5)
-  );
+  // Visit Form State in local timezone
+  const [visitDate, setVisitDate] = useState<string>(() => getTodayDateString());
+  const [visitTime, setVisitTime] = useState<string>(() => getCurrentTimeString());
+
+  // Validation: Check if visit date or time is in the future
+  const todayStr = getTodayDateString();
+  const curTimeStr = getCurrentTimeString();
+  const isFutureDate = visitDate > todayStr;
+  const isFutureTimeOnSameDay = visitDate === todayStr && visitTime > curTimeStr;
+  const isFutureVisit = isFutureDate || isFutureTimeOnSameDay;
 
   // Vital Signs
   const [weight, setWeight] = useState<number>(55.0);
@@ -232,11 +267,10 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
 
   // Set real-time timestamp
   const handleSetCurrentDateTime = () => {
-    const cur = new Date();
-    setVisitDate(cur.toISOString().split('T')[0]);
-    setVisitTime(cur.toTimeString().slice(0, 5));
-    setFeedbackMessage('อัปเดตวันและเวลาออกเยี่ยมเป็นเวลาปัจจุบันเรียบร้อยแล้ว');
-    setTimeout(() => setFeedbackMessage(null), 3000);
+    setVisitDate(getTodayDateString());
+    setVisitTime(getCurrentTimeString());
+    setFeedbackMessage('✓ อัปเดตเป็นวันและเวลาปัจจุบันเรียบร้อยแล้ว (สามารถกดส่งรายงานการออกเยี่ยมได้ทันที)');
+    setTimeout(() => setFeedbackMessage(null), 3500);
   };
 
   // GPS update
@@ -336,6 +370,17 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
   // Submit visit
   const handleSubmitVisit = (status: 'draft' | 'submitted') => {
     if (!selectedPatient) return;
+
+    // ตรวจสอบ: ต้องรอให้ถึงวันเยี่ยมก่อนถึงจะกดส่งรายงานได้ เพื่อป้องกัน CG ส่งข้อมูลก่อนเวลาส่ง
+    if (status === 'submitted' && isFutureVisit) {
+      setFeedbackMessage(
+        isFutureDate
+          ? `⚠️ ไม่สามารถส่งงานได้: กำหนดเยี่ยมวันที่ ${formatThaiDate(visitDate)} ยังไม่ถึงกำหนดวันจริง (ไม่อนุญาตให้ส่งล่วงหน้า)`
+          : `⚠️ ไม่สามารถส่งงานได้: กำหนดเวลา ${visitTime} น. ยังไม่ถึงเวลาปฏิบัติงานจริง`
+      );
+      setTimeout(() => setFeedbackMessage(null), 4500);
+      return;
+    }
 
     const signatureData = canvasRef.current?.toDataURL() || '';
 
@@ -468,12 +513,32 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
 
           <button
             type="button"
+            disabled={isFutureVisit}
             onClick={() => handleSubmitVisit('submitted')}
-            className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer transition-all flex items-center gap-1.5 active:scale-95"
-            title="บันทึกและส่งรายงานการออกเยี่ยม"
+            className={`px-3.5 py-1.5 font-bold rounded-xl text-xs shadow-xs transition-all flex items-center gap-1.5 ${
+              isFutureVisit
+                ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed shadow-none'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white cursor-pointer active:scale-95'
+            }`}
+            title={
+              isFutureVisit
+                ? isFutureDate
+                  ? `ยังไม่ถึงวันเยี่ยม (${formatThaiDate(visitDate)}) - ต้องรอให้ถึงวันเยี่ยมก่อนจึงจะส่งได้`
+                  : `ยังไม่ถึงเวลาเยี่ยม (${visitTime} น.) - ต้องรอให้ถึงเวลาเข้าเยี่ยมจริงก่อน`
+                : "บันทึกและส่งรายงานการออกเยี่ยม"
+            }
           >
-            <CheckCircle2 className="w-3.5 h-3.5 text-amber-300" />
-            <span>บันทึกส่งงาน</span>
+            {isFutureVisit ? (
+              <>
+                <Lock className="w-3.5 h-3.5 text-amber-600" />
+                <span>ยังไม่ถึงวันเยี่ยม</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-amber-300" />
+                <span>บันทึกส่งงาน</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -551,25 +616,45 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
           <div>
-            <label className="block text-slate-600 font-semibold mb-1">วันที่ออกเยี่ยม</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-slate-700 font-bold">วันที่ออกเยี่ยม:</label>
+              {isFutureDate && (
+                <span className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded font-bold flex items-center gap-1">
+                  <Lock className="w-2.5 h-2.5" />
+                  วันในอนาคต (ยังไม่ถึง)
+                </span>
+              )}
+            </div>
             <div className="relative">
               <input
                 type="date"
                 value={visitDate}
                 onChange={(e) => setVisitDate(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 font-medium focus:ring-2 focus:ring-teal-500"
+                className={`w-full px-3 py-2 border rounded-lg font-medium focus:ring-2 focus:ring-teal-500 ${
+                  isFutureDate ? 'border-amber-400 bg-amber-50/50 text-amber-900 font-bold' : 'border-slate-300 text-slate-800'
+                }`}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-slate-600 font-semibold mb-1">เวลาที่เข้าเยี่ยม</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-slate-700 font-bold">เวลาที่เข้าเยี่ยม:</label>
+              {isFutureTimeOnSameDay && (
+                <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded font-bold flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  ยังไม่ถึงเวลา
+                </span>
+              )}
+            </div>
             <div className="relative">
               <input
                 type="time"
                 value={visitTime}
                 onChange={(e) => setVisitTime(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 font-medium focus:ring-2 focus:ring-teal-500"
+                className={`w-full px-3 py-2 border rounded-lg font-medium focus:ring-2 focus:ring-teal-500 ${
+                  isFutureTimeOnSameDay ? 'border-amber-400 bg-amber-50/50 text-amber-900 font-bold' : 'border-slate-300 text-slate-800'
+                }`}
               />
             </div>
           </div>
@@ -594,6 +679,32 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
             />
           </div>
         </div>
+
+        {/* แจ้งเตือนเมื่อระบุวัน/เวลาในอนาคต */}
+        {isFutureVisit && (
+          <div className="mt-3 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 text-xs flex items-start gap-2.5 animate-in fade-in shadow-2xs">
+            <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-bold text-amber-900 flex items-center gap-1.5">
+                <span>🔒 ล็อคปุ่มกดส่งงาน: {isFutureDate ? `ยังไม่ถึงวันเยี่ยม (${formatThaiDate(visitDate)})` : `ยังไม่ถึงเวลาส่งงาน (${visitTime} น.)`}</span>
+              </div>
+              <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                ระบบตั้งค่าความปลอดภัยตามระเบียบ LTC: <strong>ต้องรอให้ถึงวันและเวลาออกเยี่ยมจริงก่อนจึงจะกดส่งรายงานได้</strong> เพื่อป้องกัน CG ส่งข้อมูลก่อนเวลาส่งจริง
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSetCurrentDateTime}
+                  className="inline-flex items-center gap-1 text-[11px] bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-2.5 py-1 rounded-lg shadow-2xs cursor-pointer transition-colors"
+                >
+                  <Clock className="w-3 h-3 text-emerald-200" />
+                  <span>ปรับเป็นวันเวลาปัจจุบัน (วันนี้ {formatThaiDate(todayStr)})</span>
+                </button>
+                <span className="text-[10px] text-amber-700">หรือสามารถบันทึกเป็นแบบร่าง (Draft) ไว้ก่อนได้</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3 text-xs">
           <div className="sm:col-span-2">
@@ -1133,11 +1244,38 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
 
           {/* Action Buttons & Guidance */}
           <div className="space-y-3">
-            <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl text-xs text-emerald-900 leading-relaxed">
-              <p className="font-bold mb-1">คำยืนยันการส่งรายงาน:</p>
-              ข้าพเจ้าขอรับรองว่าได้ลงพื้นที่ตรวจเยี่ยมผู้สูงอายุ/ผู้มีภาวะพึ่งพิงตามวัน เวลา และสถานที่ดังกล่าวจริง
-              และข้อมูลสัญญาณชีพทั้งหมดได้รับการตรวจวัดถูกต้องตามมาตรฐาน
-            </div>
+            {isFutureVisit ? (
+              <div className="bg-amber-50 border-2 border-amber-300 p-4 rounded-xl text-xs text-amber-950 flex items-start gap-3 shadow-sm animate-in fade-in">
+                <Lock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="font-bold text-sm text-amber-900 flex items-center gap-1.5">
+                    <span>🔒 ไม่สามารถกดส่งรายงานการออกเยี่ยมได้ในขณะนี้</span>
+                  </div>
+                  <p className="text-amber-800 leading-relaxed">
+                    ระบบตรวจพบว่ากำหนดเยี่ยมคือ <strong>{formatThaiDate(visitDate)}</strong> {isFutureDate ? '(ยังไม่ถึงวันเยี่ยมจริง)' : `เวลา ${visitTime} น. (ยังไม่ถึงเวลาส่งงาน)`}
+                    <br />
+                    ตามมาตรฐานการปฏิบัติงาน LTC <strong>ต้องรอให้ถึงวันและเวลาออกเยี่ยมจริงก่อนจึงจะสามารถกดเยี่ยมได้</strong> เพื่อป้องกัน CG ส่งข้อมูลและภาพถ่ายก่อนเวลาปฏิบัติงาน
+                  </p>
+                  <div className="pt-1 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSetCurrentDateTime}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-colors"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-emerald-200" />
+                      <span>เปลี่ยนเป็นวันและเวลาปัจจุบันเพื่อส่งรายงานทันที</span>
+                    </button>
+                    <span className="text-[11px] text-amber-700">หรือสามารถกด "บันทึกแบบร่าง (Draft)" ไว้ก่อนได้</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl text-xs text-emerald-900 leading-relaxed">
+                <p className="font-bold mb-1">คำยืนยันการส่งรายงาน:</p>
+                ข้าพเจ้าขอรับรองว่าได้ลงพื้นที่ตรวจเยี่ยมผู้สูงอายุ/ผู้มีภาวะพึ่งพิงตามวัน เวลา และสถานที่ดังกล่าวจริง
+                และข้อมูลสัญญาณชีพทั้งหมดได้รับการตรวจวัดถูกต้องตามมาตรฐาน
+              </div>
+            )}
 
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
@@ -1150,11 +1288,32 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
 
               <button
                 type="button"
+                disabled={isFutureVisit}
                 onClick={() => handleSubmitVisit('submitted')}
-                className="flex-1 px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md cursor-pointer transition-all flex items-center justify-center gap-2"
+                className={`flex-1 px-5 py-3 font-bold rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
+                  isFutureVisit
+                    ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed shadow-none'
+                    : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white cursor-pointer active:scale-98'
+                }`}
+                title={
+                  isFutureVisit
+                    ? isFutureDate
+                      ? `ยังไม่ถึงวันออกเยี่ยม (${formatThaiDate(visitDate)}) - ไม่สามารถส่งรายงานล่วงหน้าได้`
+                      : `ยังไม่ถึงเวลาออกเยี่ยม (${visitTime} น.) - ไม่สามารถส่งรายงานล่วงหน้าได้`
+                    : "บันทึกและส่งรายงานการออกเยี่ยม"
+                }
               >
-                <CheckCircle2 className="w-4 h-4 text-amber-300" />
-                <span>บันทึกและส่งรายงานการออกเยี่ยม</span>
+                {isFutureVisit ? (
+                  <>
+                    <Lock className="w-4 h-4 text-amber-600" />
+                    <span>🔒 ยังไม่ถึงวันเยี่ยม (รอถึงวันนัดก่อนกดส่ง)</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-amber-300" />
+                    <span>บันทึกและส่งรายงานการออกเยี่ยม</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

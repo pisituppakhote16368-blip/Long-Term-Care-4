@@ -189,7 +189,17 @@ export const Header: React.FC<HeaderProps> = ({
 
         <div className="flex items-center space-x-3">
           <span className="text-emerald-200 font-light">
-            วันนี้: <strong className="font-semibold text-white">25 กันยายน 2569</strong>
+            วันนี้: <strong className="font-semibold text-white">
+              {(() => {
+                const d = new Date();
+                const months = [
+                  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+                  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+                ];
+                const thaiYear = d.getFullYear() > 2400 ? d.getFullYear() : d.getFullYear() + 543;
+                return `${d.getDate()} ${months[d.getMonth()]} ${thaiYear}`;
+              })()}
+            </strong>
           </span>
 
           {/* Screen Zoom quick controller */}
