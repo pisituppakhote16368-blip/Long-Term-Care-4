@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "Patient": {
+      "title": "Patient",
+      "description": "Elderly patient in Long-Term Care (LTC) program",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique patient identifier" },
+        "citizenId": { "type": "string", "description": "13-digit Thai National ID" },
+        "name": { "type": "string", "description": "Full name with title" },
+        "age": { "type": "number", "description": "Patient age in years" },
+        "gender": { "type": "string", "description": "Gender: ชาย or หญิง" },
+        "address": { "type": "string", "description": "Home address or house number" },
+        "villageNo": { "type": "string", "description": "Village Moo number" },
+        "villageName": { "type": "string", "description": "Village name" },
+        "ltcGroup": { "type": "number", "description": "LTC Group 1, 2, 3, or 4" },
+        "taiScore": { "type": "string", "description": "TAI category code" },
+        "adlScore": { "type": "number", "description": "Barthel ADL score (0-20)" },
+        "chronicDiseases": { "type": "array", "description": "List of chronic diseases" },
+        "caregiverId": { "type": "string", "description": "Assigned CG ID" },
+        "caregiverName": { "type": "string", "description": "Assigned CG Name" },
+        "phone": { "type": "string", "description": "Contact telephone" },
+        "avatarUrl": { "type": "string", "description": "Patient photo URL or Base64" },
+        "lastVisitDate": { "type": "string", "description": "Date of latest visit" },
+        "monthlyQuota": { "type": "number", "description": "Required visits quota per month" },
+        "visitsThisMonth": { "type": "number", "description": "Completed visits count this month" },
+        "targetVisitsPerMonth": { "type": "number", "description": "Target visits count per month" },
+        "status": { "type": "string", "description": "Status: active, discharged, or deceased" },
+        "statusDate": { "type": "string", "description": "Date of status change" },
+        "statusReason": { "type": "string", "description": "Reason for status change" },
+        "fiscalYear": { "type": "string", "description": "Fiscal year (e.g. 2568)" }
+      },
+      "required": ["id", "name"]
+    },
+    "Visit": {
+      "title": "Visit",
+      "description": "Caregiver visit log record for LTC elderly patient",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique visit ID" },
+        "elderlyId": { "type": "string", "description": "Target patient ID" },
+        "elderlyName": { "type": "string", "description": "Target patient name" },
+        "elderlyAge": { "type": "number", "description": "Patient age at visit" },
+        "elderlyGroup": { "type": "number", "description": "LTC group at visit" },
+        "caregiverId": { "type": "string", "description": "Caregiver ID" },
+        "caregiverName": { "type": "string", "description": "Caregiver full name" },
+        "visitDate": { "type": "string", "description": "Date of visit (YYYY-MM-DD)" },
+        "visitTime": { "type": "string", "description": "Time of visit (HH:mm)" },
+        "adlScore": { "type": "number", "description": "ADL score recorded during visit" },
+        "taiCategory": { "type": "string", "description": "TAI category code" },
+        "carePlan": { "type": "string", "description": "Care activities and plan conducted" },
+        "photos": { "type": "array", "description": "Photos taken during visit" },
+        "caregiverSignature": { "type": "string", "description": "Caregiver signature representation" },
+        "status": { "type": "string", "description": "Status: submitted or approved" },
+        "submittedAt": { "type": "string", "description": "Timestamp ISO string of submission" }
+      },
+      "required": ["id", "elderlyId", "caregiverName", "visitDate"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Caregiver, Care Manager or Director staff profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Staff ID" },
+        "code": { "type": "string", "description": "Staff employee code" },
+        "name": { "type": "string", "description": "Staff full name" },
+        "role": { "type": "string", "description": "Staff role: caregiver, care_manager, director" },
+        "position": { "type": "string", "description": "Official position title" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "avatarUrl": { "type": "string", "description": "Profile picture URL" }
+      },
+      "required": ["id", "name", "role"]
+    },
+    "AppSetting": {
+      "title": "AppSetting",
+      "description": "App settings, supplies state, and sync meta",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Setting key" },
+        "data": { "type": "object", "description": "Configuration or inventory data" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/patients/{patientId}": {
+      "schema": "Patient",
+      "description": "Elderly patient records and photos"
+    },
+    "/visits/{visitId}": {
+      "schema": "Visit",
+      "description": "Caregiver visit reports with evidence photos and metrics"
+    },
+    "/staff/{staffId}": {
+      "schema": "Staff",
+      "description": "Health personnel and caregiver profiles"
+    },
+    "/app_settings/{settingId}": {
+      "schema": "AppSetting",
+      "description": "Global application configuration and supplies data"
+    }
+  }
+}

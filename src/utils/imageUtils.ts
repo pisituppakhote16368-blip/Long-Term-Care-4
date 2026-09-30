@@ -15,9 +15,9 @@ export const DEFAULT_VISIT_PHOTO = `data:image/svg+xml;utf8,<svg xmlns="http://w
  */
 export function compressImageFile(
   file: File,
-  maxWidth = 1024,
-  maxHeight = 1024,
-  quality = 0.82
+  maxWidth = 800,
+  maxHeight = 800,
+  quality = 0.72
 ): Promise<string> {
   return new Promise((resolve) => {
     // If not an image, fallback to empty or raw read

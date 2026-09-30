@@ -33,6 +33,7 @@ interface HeaderProps {
   onSwitchRole: (role: 'caregiver' | 'care_manager') => void;
   onOpenLoginModal: () => void;
   isOnline: boolean;
+  cloudStatus?: 'connected' | 'syncing' | 'error';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -44,7 +45,8 @@ export const Header: React.FC<HeaderProps> = ({
   staffList,
   onSwitchRole,
   onOpenLoginModal,
-  isOnline
+  isOnline,
+  cloudStatus = 'connected'
 }) => {
   const [showRoleMenu, setShowRoleMenu] = React.useState(false);
 
@@ -104,9 +106,20 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Top utility bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 border-b border-emerald-700/50 flex flex-wrap items-center justify-between text-xs gap-2">
         <div className="flex items-center space-x-3">
-          <span className="flex items-center gap-1 bg-emerald-700/60 px-2 py-0.5 rounded-full text-emerald-100 font-medium">
-            <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-300 animate-pulse' : 'bg-amber-400'}`}></span>
-            {isOnline ? 'ออนไลน์ (ระบบ รพ.สต.ธาตุทอง)' : 'ออฟไลน์ (โหมดบันทึกลงเครื่อง)'}
+          <span 
+            className="flex items-center gap-1.5 bg-emerald-700/80 px-2.5 py-0.5 rounded-full text-emerald-100 font-medium"
+            title="บันทึกข้อมูลและภาพถ่ายทั้งหมดลงสู่ระบบคลาวด์ถาวรอัตโนมัติ ทุกครั้งที่มีการใช้งานผ่านลิงก์"
+          >
+            <span className={`w-2 h-2 rounded-full ${
+              cloudStatus === 'syncing' ? 'bg-amber-300 animate-ping' :
+              cloudStatus === 'error' ? 'bg-rose-400' :
+              isOnline ? 'bg-emerald-300 animate-pulse' : 'bg-amber-400'
+            }`}></span>
+            <span>
+              {cloudStatus === 'syncing' ? 'กำลังซิงค์ข้อมูลคลาวด์...' :
+               cloudStatus === 'error' ? 'ออฟไลน์ (เชื่อมต่อคลาวด์ไม่ได้)' :
+               'คลาวด์ออนไลน์ (บันทึกข้อมูลและภาพอัตโนมัติ)'}
+            </span>
           </span>
           <span className="hidden sm:inline text-emerald-200">
             ระบบสนับสนุนการปฏิบัติงานการดูแลระยะยาว (Long Term Care : LTC)

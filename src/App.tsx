@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { VisitLogTab } from './components/VisitLogTab';
 import { MyVisitSummaryTab } from './components/MyVisitSummaryTab';
@@ -19,11 +19,23 @@ import {
   INITIAL_STAFF_MEMBERS 
 } from './data/mockData';
 import { ElderlyPatient, VisitRecord, CaregiverUser, StaffMember } from './types';
+import { 
+  seedInitialDataIfEmpty,
+  subscribePatients,
+  subscribeVisits,
+  subscribeStaff,
+  savePatientToFirestore,
+  deletePatientFromFirestore,
+  saveVisitToFirestore,
+  saveAllStaffToFirestore
+} from './services/firestoreService';
+import { testConnection } from './firebase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('visit-log');
   const [currentRole, setCurrentRole] = useState<'caregiver' | 'care_manager' | 'director'>('caregiver');
   const [isOnline] = useState<boolean>(true);
+  const [cloudStatus, setCloudStatus] = useState<'connected' | 'syncing' | 'error'>('syncing');
 
   // Staff State & Current Authenticated Staff
   const [staffList, setStaffList] = useState<StaffMember[]>(INITIAL_STAFF_MEMBERS);
@@ -50,20 +62,95 @@ export default function App() {
   const [isAddElderlyOpen, setIsAddElderlyOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
+  // Real-time synchronization with Cloud Firestore
+  useEffect(() => {
+    let unsubPatients: (() => void) | undefined;
+    let unsubVisits: (() => void) | undefined;
+    let unsubStaff: (() => void) | undefined;
+
+    async function initializeFirebaseSync() {
+      try {
+        setCloudStatus('syncing');
+        await testConnection();
+        await seedInitialDataIfEmpty(INITIAL_ELDERLY_PATIENTS, INITIAL_VISITS, INITIAL_STAFF_MEMBERS);
+
+        // Subscribe to real-time changes of elderly patients
+        unsubPatients = subscribePatients(
+          (remotePatients) => {
+            if (remotePatients && remotePatients.length > 0) {
+              setPatients(remotePatients);
+              setTargetPatientIdForVisit((prev) => {
+                if (prev && remotePatients.some((p) => p.id === prev)) return prev;
+                return remotePatients[0]?.id || '';
+              });
+            }
+            setCloudStatus('connected');
+          },
+          (err) => {
+            console.error('Firestore subscribePatients error:', err);
+            setCloudStatus('error');
+          }
+        );
+
+        // Subscribe to real-time changes of visits and evidence photos
+        unsubVisits = subscribeVisits(
+          (remoteVisits) => {
+            if (remoteVisits) {
+              setVisits(remoteVisits);
+            }
+          },
+          (err) => {
+            console.error('Firestore subscribeVisits error:', err);
+          }
+        );
+
+        // Subscribe to real-time staff changes
+        unsubStaff = subscribeStaff(
+          (remoteStaff) => {
+            if (remoteStaff && remoteStaff.length > 0) {
+              setStaffList(remoteStaff);
+              setCurrentStaff((prev) => {
+                const match = remoteStaff.find((s) => s.id === prev.id);
+                return match || remoteStaff[0];
+              });
+            }
+          },
+          (err) => {
+            console.error('Firestore subscribeStaff error:', err);
+          }
+        );
+      } catch (error) {
+        console.error('Failed to initialize Firestore connection:', error);
+        setCloudStatus('error');
+      }
+    }
+
+    initializeFirebaseSync();
+
+    return () => {
+      if (unsubPatients) unsubPatients();
+      if (unsubVisits) unsubVisits();
+      if (unsubStaff) unsubStaff();
+    };
+  }, []);
+
   // Handlers
-  const handleSaveVisit = (newVisit: VisitRecord) => {
-    setVisits((prev) => [newVisit, ...prev]);
+  const handleSaveVisit = async (newVisit: VisitRecord) => {
+    // Optimistic update
+    setVisits((prev) => [newVisit, ...prev.filter((v) => v.id !== newVisit.id)]);
 
     // Update patient's visit count and lastVisitDate
+    let updatedPatient: ElderlyPatient | null = null;
     setPatients((prev) =>
       prev.map((p) => {
         if (p.id === newVisit.elderlyId) {
-          return {
+          updatedPatient = {
             ...p,
-            visitsThisMonth: p.visitsThisMonth + 1,
+            visitsThisMonth: (p.visitsThisMonth || 0) + 1,
             lastVisitDate: newVisit.visitDate,
             adlScore: newVisit.adlScore,
           };
+          return updatedPatient;
         }
         return p;
       })
@@ -75,20 +162,40 @@ export default function App() {
       completedVisits: prev.completedVisits + 1,
       pendingVisits: Math.max(0, prev.pendingVisits - 1),
     }));
+
+    // Persist to Cloud Firestore
+    try {
+      await saveVisitToFirestore(newVisit);
+      if (updatedPatient) {
+        await savePatientToFirestore(updatedPatient);
+      }
+    } catch (e) {
+      console.error('Failed to save visit to Firestore:', e);
+    }
   };
 
-  const handleUpdatePatient = (updatedPatient: ElderlyPatient) => {
+  const handleUpdatePatient = async (updatedPatient: ElderlyPatient) => {
     setPatients((prev) =>
       prev.map((p) => (p.id === updatedPatient.id ? updatedPatient : p))
     );
+    try {
+      await savePatientToFirestore(updatedPatient);
+    } catch (e) {
+      console.error('Failed to save updated patient to Firestore:', e);
+    }
   };
 
-  const handleAddPatient = (newPatient: ElderlyPatient) => {
+  const handleAddPatient = async (newPatient: ElderlyPatient) => {
     setPatients((prev) => [newPatient, ...prev]);
     setTargetPatientIdForVisit(newPatient.id);
+    try {
+      await savePatientToFirestore(newPatient);
+    } catch (e) {
+      console.error('Failed to save new patient to Firestore:', e);
+    }
   };
 
-  const handleDeletePatient = (patientId: string) => {
+  const handleDeletePatient = async (patientId: string) => {
     setPatients((prev) => prev.filter((p) => p.id !== patientId));
     if (targetPatientIdForVisit === patientId) {
       setPatients((prev) => {
@@ -96,6 +203,11 @@ export default function App() {
         setTargetPatientIdForVisit(remaining[0]?.id || '');
         return remaining;
       });
+    }
+    try {
+      await deletePatientFromFirestore(patientId);
+    } catch (e) {
+      console.error('Failed to delete patient from Firestore:', e);
     }
   };
 
@@ -121,9 +233,28 @@ export default function App() {
     setIsTaiOpen(true);
   };
 
-  const handleRestoreData = (restoredPatients: ElderlyPatient[], restoredVisits: VisitRecord[]) => {
+  const handleRestoreData = async (restoredPatients: ElderlyPatient[], restoredVisits: VisitRecord[]) => {
     setPatients(restoredPatients);
     setVisits(restoredVisits);
+    try {
+      for (const p of restoredPatients) {
+        await savePatientToFirestore(p);
+      }
+      for (const v of restoredVisits) {
+        await saveVisitToFirestore(v);
+      }
+    } catch (e) {
+      console.error('Failed to restore data to Firestore:', e);
+    }
+  };
+
+  const handleUpdateStaffList = async (newStaffList: StaffMember[]) => {
+    setStaffList(newStaffList);
+    try {
+      await saveAllStaffToFirestore(newStaffList);
+    } catch (e) {
+      console.error('Failed to update staff list in Firestore:', e);
+    }
   };
 
   // Staff Selection on Login
@@ -158,13 +289,14 @@ export default function App() {
         currentRole={currentRole}
         currentStaff={currentStaff}
         staffList={staffList}
+        cloudStatus={cloudStatus}
         onSwitchRole={(role) => {
           setCurrentRole(role);
           if (role === 'care_manager') {
-            const cm = staffList.find(s => s.role === 'care_manager');
+            const cm = staffList.find((s) => s.role === 'care_manager');
             if (cm) setCurrentStaff(cm);
           } else {
-            const cg = staffList.find(s => s.role === 'caregiver');
+            const cg = staffList.find((s) => s.role === 'caregiver');
             if (cg) setCurrentStaff(cg);
             // ถ้าเป็นสิทธิ์ CG และอยู่ในหน้า 3-7 ให้สลับกลับมาหน้า 1
             if (activeTab !== 'visit-log' && activeTab !== 'my-summary') {
@@ -245,7 +377,7 @@ export default function App() {
             visits={visits}
             currentRole={currentRole}
             staffList={staffList}
-            onUpdateStaffList={setStaffList}
+            onUpdateStaffList={handleUpdateStaffList}
             onUpdatePatient={handleUpdatePatient}
             onRestoreData={handleRestoreData}
           />
