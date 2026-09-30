@@ -103,13 +103,14 @@ export const INITIAL_STAFF_MEMBERS: StaffMember[] = [
     code: 'CM-4701-01',
     name: 'นางสาวสิริวิมล สารสวัสดิ์',
     role: 'care_manager',
-    position: 'พยาบาลวิชาชีพชำนาญการ (Care Manager)',
+    position: 'พยาบาลวิชาชีพชำนาญการ (Care Manager & ผู้ดูแลระบบ Admin)',
     phone: '089-765-4321',
     hospital: 'รพ.สต.ธาตุทอง',
     assignedArea: 'รับผิดชอบงาน LTC ทั้งตำบลธาตุทอง (ม.1 - ม.8)',
     assignedVillage: 'หมู่ 1 บ้านธาตุทอง, หมู่ 2 บ้านหินโงม, หมู่ 3 บ้านโนนสร้างไพ, หมู่ 4 บ้านหนองหอย, หมู่ 5 บ้านคันชา, หมู่ 6 บ้านโคกหลวง, หมู่ 7 บ้านเดิด, หมู่ 8 บ้านเดื่อ',
     avatarUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
     password: '1234',
+    isAdmin: true,
   },
   {
     id: 'dir-01',
@@ -972,3 +973,17 @@ export const INITIAL_DISTRIBUTIONS: SupplyDistributionRecord[] = [
     note: 'ช่วยพยุงเดินจากภาวะข้อเข่าเสื่อม',
   },
 ];
+
+export const DEFAULT_SYSTEM_CONFIG = {
+  hospitalName: 'โรงพยาบาลส่งเสริมสุขภาพตำบลธาตุทอง',
+  subdistrict: 'ตำบลธาตุทอง',
+  district: 'อำเภอสว่างแดนดิน',
+  province: 'จังหวัดสกลนคร',
+  fiscalYear: '2569',
+  quotaGroup1: 1,
+  quotaGroup2: 2,
+  quotaGroup3: 4,
+  quotaGroup4: 8,
+  adminId: 'cm-01',
+};
+

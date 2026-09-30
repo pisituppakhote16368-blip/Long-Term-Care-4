@@ -11,7 +11,8 @@ import {
   Sparkles,
   Building2,
   KeyRound,
-  AlertCircle
+  AlertCircle,
+  Crown
 } from 'lucide-react';
 import { StaffMember } from '../types';
 import { INITIAL_STAFF_MEMBERS } from '../data/mockData';
@@ -109,6 +110,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {staffList.map((staff) => {
                 const isSelected = staff.id === selectedStaffId;
+                const isCM1 = staff.id === 'cm-01' || staff.isAdmin;
+
                 return (
                   <button
                     key={staff.id}
@@ -116,8 +119,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     onClick={() => handleStaffClick(staff)}
                     className={`relative p-2 rounded-xl border flex flex-col items-center text-center transition-all cursor-pointer group ${
                       isSelected
-                        ? 'border-teal-600 bg-teal-50/80 ring-2 ring-teal-500/30 shadow-xs'
-                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                        ? (isCM1 ? 'border-amber-500 bg-amber-50/80 ring-2 ring-amber-400 shadow-sm' : 'border-teal-600 bg-teal-50/80 ring-2 ring-teal-500/30 shadow-xs')
+                        : (isCM1 ? 'border-amber-300 bg-amber-50/30 hover:bg-amber-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50')
                     }`}
                   >
                     {/* Avatar with status indicator */}
@@ -133,16 +136,29 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                           <CheckCircle2 className="w-6 h-6 text-white drop-shadow-md" />
                         </div>
                       )}
+                      {isCM1 && (
+                        <span className="absolute -top-0.5 -right-0.5 bg-amber-500 text-white p-0.5 rounded-full shadow-xs" title="ผู้ดูแลระบบ Admin">
+                          <Crown className="w-3 h-3" />
+                        </span>
+                      )}
                     </div>
 
                     {/* Role Badge */}
-                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded mb-0.5 ${
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded mb-0.5 flex items-center gap-0.5 ${
+                      isCM1 ? 'bg-amber-100 text-amber-950 border border-amber-400 font-extrabold' :
                       staff.role === 'director' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
                       staff.role === 'care_manager' ? 'bg-teal-100 text-teal-900 border border-teal-300' :
                       'bg-emerald-100 text-emerald-900 border border-emerald-300'
                     }`}>
-                      {staff.role === 'director' ? 'ผอ.รพ.สต.' :
-                       staff.role === 'care_manager' ? 'CM' : 'CG'}
+                      {isCM1 ? (
+                        <>
+                          <Crown className="w-2.5 h-2.5 text-amber-600" />
+                          <span>CM 1 (Admin)</span>
+                        </>
+                      ) : (
+                        staff.role === 'director' ? 'ผอ.รพ.สต.' :
+                        staff.role === 'care_manager' ? 'CM' : 'CG'
+                      )}
                     </span>
 
                     {/* Staff Name Short */}
@@ -157,26 +173,44 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
           {/* Selected Staff Details Card */}
           {currentSelectedStaff && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
-              <img
-                src={currentSelectedStaff.avatarUrl}
-                alt={currentSelectedStaff.name}
-                referrerPolicy="no-referrer"
-                className="w-11 h-11 rounded-xl object-cover ring-2 ring-teal-500/40 shrink-0"
-              />
+            <div className={`border rounded-xl p-3 flex items-center gap-3 ${
+              currentSelectedStaff.id === 'cm-01' || currentSelectedStaff.isAdmin
+                ? 'bg-amber-50/70 border-amber-300'
+                : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="relative">
+                <img
+                  src={currentSelectedStaff.avatarUrl}
+                  alt={currentSelectedStaff.name}
+                  referrerPolicy="no-referrer"
+                  className="w-11 h-11 rounded-xl object-cover ring-2 ring-amber-400/80 shrink-0 shadow-xs"
+                />
+                {(currentSelectedStaff.id === 'cm-01' || currentSelectedStaff.isAdmin) && (
+                  <span className="absolute -top-1 -right-1 bg-amber-500 text-white p-0.5 rounded-full shadow-xs">
+                    <Crown className="w-2.5 h-2.5" />
+                  </span>
+                )}
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-bold text-slate-900 text-xs truncate">
                     {currentSelectedStaff.name}
                   </span>
-                  <span className={`text-[9px] font-bold px-2 py-0.2 rounded-full ${
-                    currentSelectedStaff.role === 'director' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                    currentSelectedStaff.role === 'care_manager' ? 'bg-teal-50 text-teal-800 border border-teal-200' :
-                    'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  }`}>
-                    {currentSelectedStaff.role === 'director' ? 'ผู้อำนวยการ รพ.สต.' :
-                     currentSelectedStaff.role === 'care_manager' ? 'Care Manager' : 'Caregiver (CG)'}
-                  </span>
+                  {(currentSelectedStaff.id === 'cm-01' || currentSelectedStaff.isAdmin) ? (
+                    <span className="text-[9px] font-bold px-2 py-0.2 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                      <Crown className="w-2.5 h-2.5 text-amber-700" />
+                      <span>ผู้ดูแลระบบ (Admin)</span>
+                    </span>
+                  ) : (
+                    <span className={`text-[9px] font-bold px-2 py-0.2 rounded-full ${
+                      currentSelectedStaff.role === 'director' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+                      currentSelectedStaff.role === 'care_manager' ? 'bg-teal-50 text-teal-800 border border-teal-200' :
+                      'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    }`}>
+                      {currentSelectedStaff.role === 'director' ? 'ผู้อำนวยการ รพ.สต.' :
+                       currentSelectedStaff.role === 'care_manager' ? 'Care Manager' : 'Caregiver (CG)'}
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10.5px] text-slate-500 truncate mt-0.5">
                   {currentSelectedStaff.position}
@@ -184,8 +218,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <div className="text-[10px] text-teal-700 font-mono">
                   รหัส: {currentSelectedStaff.code}
                 </div>
-                <div className="mt-1 text-[9.5px] text-slate-500 bg-white/80 rounded px-1.5 py-0.5 border border-slate-200">
-                  {currentSelectedStaff.role === 'caregiver'
+                <div className="mt-1 text-[9.5px] text-slate-600 bg-white/90 rounded px-1.5 py-0.5 border border-slate-200">
+                  {(currentSelectedStaff.id === 'cm-01' || currentSelectedStaff.isAdmin)
+                    ? '👑 สิทธิ์ Admin: ควบคุมระบบทั้งหมด, จัดการรหัสผ่านเจ้าหน้าที่, สำรองข้อมูล และเข้าถึงครบทั้ง 8 หน้า'
+                    : currentSelectedStaff.role === 'caregiver'
                     ? '🔒 สิทธิ์ CG: เข้าถึงเฉพาะหน้า 1 (บันทึกเยี่ยม) และหน้า 2 (สรุปยอดของฉัน)'
                     : '🔓 สิทธิ์ ' + (currentSelectedStaff.role === 'director' ? 'ผู้อำนวยการ รพ.สต.' : 'Care Manager') + ': เข้าถึงได้ครบทั้ง 7 หน้า'}
                 </div>

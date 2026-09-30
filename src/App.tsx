@@ -7,6 +7,7 @@ import { CMAuditTab } from './components/CMAuditTab';
 import { MonthlyReportA4Tab } from './components/MonthlyReportA4Tab';
 import { ElderlyRegistryTab } from './components/ElderlyRegistryTab';
 import { CGDataBackupTab } from './components/CGDataBackupTab';
+import { AdminPanelTab } from './components/AdminPanelTab';
 import { BarthelModal } from './components/BarthelModal';
 import { TaiModal } from './components/TaiModal';
 import { AddElderlyModal } from './components/AddElderlyModal';
@@ -33,7 +34,7 @@ import { testConnection } from './firebase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('visit-log');
-  const [currentRole, setCurrentRole] = useState<'caregiver' | 'care_manager' | 'director'>('caregiver');
+  const [currentRole, setCurrentRole] = useState<'caregiver' | 'care_manager' | 'director' | 'admin'>('caregiver');
   const [isOnline] = useState<boolean>(true);
   const [cloudStatus, setCloudStatus] = useState<'connected' | 'syncing' | 'error'>('syncing');
 
@@ -260,22 +261,27 @@ export default function App() {
   // Staff Selection on Login
   const handleSelectStaff = (selectedStaff: StaffMember) => {
     setCurrentStaff(selectedStaff);
-    setCurrentRole(selectedStaff.role);
 
-    if (selectedStaff.role === 'caregiver') {
-      setCurrentUser((prev) => ({
-        ...prev,
-        name: selectedStaff.name,
-        code: selectedStaff.code,
-        phone: selectedStaff.phone,
-        avatarUrl: selectedStaff.avatarUrl,
-        assignedVillage: selectedStaff.assignedVillage || prev.assignedVillage,
-      }));
-      setActiveTab('visit-log');
-    } else if (selectedStaff.role === 'care_manager') {
-      setActiveTab('cm-audit');
-    } else if (selectedStaff.role === 'director') {
-      setActiveTab('monthly-report');
+    if (selectedStaff.id === 'cm-01' || selectedStaff.isAdmin) {
+      setCurrentRole('admin');
+      setActiveTab('admin-panel');
+    } else {
+      setCurrentRole(selectedStaff.role);
+      if (selectedStaff.role === 'caregiver') {
+        setCurrentUser((prev) => ({
+          ...prev,
+          name: selectedStaff.name,
+          code: selectedStaff.code,
+          phone: selectedStaff.phone,
+          avatarUrl: selectedStaff.avatarUrl,
+          assignedVillage: selectedStaff.assignedVillage || prev.assignedVillage,
+        }));
+        setActiveTab('visit-log');
+      } else if (selectedStaff.role === 'care_manager') {
+        setActiveTab('cm-audit');
+      } else if (selectedStaff.role === 'director') {
+        setActiveTab('monthly-report');
+      }
     }
   };
 
@@ -292,13 +298,20 @@ export default function App() {
         cloudStatus={cloudStatus}
         onSwitchRole={(role) => {
           setCurrentRole(role);
-          if (role === 'care_manager') {
+          if (role === 'admin') {
+            const adminStaff = staffList.find((s) => s.id === 'cm-01') || staffList.find((s) => s.isAdmin);
+            if (adminStaff) setCurrentStaff(adminStaff);
+            setActiveTab('admin-panel');
+          } else if (role === 'care_manager') {
             const cm = staffList.find((s) => s.role === 'care_manager');
             if (cm) setCurrentStaff(cm);
+            if (activeTab === 'admin-panel') {
+              setActiveTab('cm-audit');
+            }
           } else {
             const cg = staffList.find((s) => s.role === 'caregiver');
             if (cg) setCurrentStaff(cg);
-            // ถ้าเป็นสิทธิ์ CG และอยู่ในหน้า 3-7 ให้สลับกลับมาหน้า 1
+            // ถ้าเป็นสิทธิ์ CG และอยู่ในหน้า 3-8 ให้สลับกลับมาหน้า 1
             if (activeTab !== 'visit-log' && activeTab !== 'my-summary') {
               setActiveTab('visit-log');
             }
@@ -375,7 +388,7 @@ export default function App() {
             currentUser={currentUser}
             patients={patients}
             visits={visits}
-            currentRole={currentRole}
+            currentRole={currentRole as any}
             staffList={staffList}
             onUpdateStaffList={handleUpdateStaffList}
             onUpdatePatient={handleUpdatePatient}
@@ -389,6 +402,18 @@ export default function App() {
             patients={patients}
             currentRole={currentRole as any}
             currentUserName={currentStaff?.name || currentUser.name}
+          />
+        )}
+
+        {/* Tab 8: Admin Console (เฉพาะ Admin, CM และ ผอ.) */}
+        {activeTab === 'admin-panel' && currentRole !== 'caregiver' && (
+          <AdminPanelTab
+            currentStaff={currentStaff}
+            staffList={staffList}
+            onUpdateStaffList={handleUpdateStaffList}
+            patients={patients}
+            visits={visits}
+            onRestoreData={handleRestoreData}
           />
         )}
       </main>

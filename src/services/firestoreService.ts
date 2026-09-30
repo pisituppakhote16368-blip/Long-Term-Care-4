@@ -64,6 +64,15 @@ export async function seedInitialDataIfEmpty(
       for (const s of initialStaff) {
         await setDoc(doc(db, STAFF_COLLECTION, s.id), s);
       }
+    } else {
+      // Ensure CM-01 is explicitly marked as Admin in database
+      const cm1 = initialStaff.find(s => s.id === 'cm-01');
+      if (cm1) {
+        await setDoc(doc(db, STAFF_COLLECTION, 'cm-01'), {
+          isAdmin: true,
+          position: 'พยาบาลวิชาชีพชำนาญการ (Care Manager & ผู้ดูแลระบบ Admin)'
+        }, { merge: true });
+      }
     }
   } catch (error) {
     console.error('Initial data check/seed notice:', error);
@@ -228,3 +237,41 @@ export async function saveAllStaffToFirestore(staffList: StaffMember[]): Promise
     handleFirestoreError(error, OperationType.WRITE, STAFF_COLLECTION);
   }
 }
+
+/**
+ * Delete a staff member from Firestore
+ */
+export async function deleteStaffFromFirestore(staffId: string): Promise<void> {
+  const path = `${STAFF_COLLECTION}/${staffId}`;
+  try {
+    await deleteDoc(doc(db, STAFF_COLLECTION, staffId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+/**
+ * Save System Configuration to Firestore
+ */
+export async function saveSystemConfigToFirestore(config: any): Promise<void> {
+  const path = 'app_settings/system_config';
+  try {
+    await setDoc(doc(db, 'app_settings', 'system_config'), config, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Subscribe to System Configuration from Firestore
+ */
+export function subscribeSystemConfig(
+  callback: (config: any) => void
+): Unsubscribe {
+  return onSnapshot(doc(db, 'app_settings', 'system_config'), (snapshot) => {
+    if (snapshot.exists()) {
+      callback(snapshot.data());
+    }
+  });
+}
+

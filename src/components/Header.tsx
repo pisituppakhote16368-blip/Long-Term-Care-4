@@ -19,7 +19,8 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
-  X
+  X,
+  Crown
 } from 'lucide-react';
 import { CaregiverUser, StaffMember } from '../types';
 
@@ -27,10 +28,10 @@ interface HeaderProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   currentUser: CaregiverUser;
-  currentRole: 'caregiver' | 'care_manager' | 'director';
+  currentRole: 'caregiver' | 'care_manager' | 'director' | 'admin';
   currentStaff?: StaffMember;
   staffList?: StaffMember[];
-  onSwitchRole: (role: 'caregiver' | 'care_manager') => void;
+  onSwitchRole: (role: 'caregiver' | 'care_manager' | 'admin') => void;
   onOpenLoginModal: () => void;
   isOnline: boolean;
   cloudStatus?: 'connected' | 'syncing' | 'error';
@@ -53,14 +54,15 @@ export const Header: React.FC<HeaderProps> = ({
   // ในมุมมอง CG ให้แถบเครื่องมือ/หัวเว็บเลื่อนตามเนื้อหาหน้าจอ ไม่ตรึงทับหน้าจอ เพื่อให้แถบงานของ CG และใบรายงาน A4 เลื่อนและตรึงอย่างอิสระ
   const [isHeaderSticky, setIsHeaderSticky] = React.useState<boolean>(false);
 
-  // ระบบรหัสผ่านสำหรับเข้าใช้งานสิทธิ์ CM (Care Manager)
+  // ระบบรหัสผ่านสำหรับเข้าใช้งานสิทธิ์ CM (Care Manager) หรือ Admin
   const [showCMPasswordModal, setShowCMPasswordModal] = React.useState<boolean>(false);
+  const [targetSwitchRole, setTargetSwitchRole] = React.useState<'care_manager' | 'admin'>('care_manager');
   const [cmPasswordInput, setCmPasswordInput] = React.useState<string>('');
   const [showCMPassword, setShowCMPassword] = React.useState<boolean>(false);
   const [cmErrorMessage, setCmErrorMessage] = React.useState<string | null>(null);
 
-  // ข้อมูล CM ประจำระบบ
-  const cmStaff = staffList?.find(s => s.role === 'care_manager');
+  // ข้อมูล CM ประจำระบบ (CM คนที่ 1 คือ Admin)
+  const cmStaff = staffList?.find(s => s.id === 'cm-01') || staffList?.find(s => s.role === 'care_manager');
 
   const handleVerifyCMPassword = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -69,9 +71,9 @@ export const Header: React.FC<HeaderProps> = ({
       setCmErrorMessage(null);
       setShowCMPasswordModal(false);
       setCmPasswordInput('');
-      onSwitchRole('care_manager');
+      onSwitchRole(targetSwitchRole);
     } else {
-      setCmErrorMessage('รหัสผ่าน CM ไม่ถูกต้อง (รหัสเริ่มต้น: 1234)');
+      setCmErrorMessage('รหัสผ่านไม่ถูกต้อง (รหัสเริ่มต้น: 1234)');
     }
   };
 
@@ -84,14 +86,17 @@ export const Header: React.FC<HeaderProps> = ({
 
   // สิทธิ์การเข้าถึงเมนูแท็บ:
   // หากล็อกอินด้วยชื่อ CG (Caregiver) จะเห็นเฉพาะหน้า 1 (บันทึกการออกเยี่ยม) และหน้า 2 (สรุปยอดงานเยี่ยมของฉัน) เท่านั้น
+  const isCurrentAdmin = currentRole === 'admin' || currentStaff?.isAdmin || currentStaff?.id === 'cm-01';
+
   const allTabs = [
-    { id: 'visit-log', label: '1. บันทึกการออกเยี่ยม', icon: HeartPulse, allowedRoles: ['caregiver', 'care_manager', 'director'] },
-    { id: 'my-summary', label: '2. สรุปยอดงานเยี่ยมของฉัน', icon: BarChart3, allowedRoles: ['caregiver', 'care_manager', 'director'] },
-    { id: 'cm-audit', label: '3. ตรวจสอบงาน CM รายเดือน', icon: UserCheck, allowedRoles: ['care_manager', 'director'] },
-    { id: 'monthly-report', label: '4. ใบรายงานประจำเดือน A4', icon: FileText, allowedRoles: ['care_manager', 'director'] },
-    { id: 'elderly-registry', label: '5. ทะเบียนผู้สูงอายุ', icon: Users, allowedRoles: ['care_manager', 'director'] },
-    { id: 'cg-data-backup', label: '6. ข้อมูลบุคลากร & สำรอง', icon: Database, allowedRoles: ['care_manager', 'director'] },
-    { id: 'supplies', label: '7. รายการของใช้จำเป็น', icon: Boxes, allowedRoles: ['care_manager', 'director'] },
+    { id: 'visit-log', label: '1. บันทึกการออกเยี่ยม', icon: HeartPulse, allowedRoles: ['caregiver', 'care_manager', 'director', 'admin'] },
+    { id: 'my-summary', label: '2. สรุปยอดงานเยี่ยมของฉัน', icon: BarChart3, allowedRoles: ['caregiver', 'care_manager', 'director', 'admin'] },
+    { id: 'cm-audit', label: '3. ตรวจสอบงาน CM รายเดือน', icon: UserCheck, allowedRoles: ['care_manager', 'director', 'admin'] },
+    { id: 'monthly-report', label: '4. ใบรายงานประจำเดือน A4', icon: FileText, allowedRoles: ['care_manager', 'director', 'admin'] },
+    { id: 'elderly-registry', label: '5. ทะเบียนผู้สูงอายุ', icon: Users, allowedRoles: ['care_manager', 'director', 'admin'] },
+    { id: 'cg-data-backup', label: '6. ข้อมูลบุคลากร & สำรอง', icon: Database, allowedRoles: ['care_manager', 'director', 'admin'] },
+    { id: 'supplies', label: '7. รายการของใช้จำเป็น', icon: Boxes, allowedRoles: ['care_manager', 'director', 'admin'] },
+    { id: 'admin-panel', label: '8. ระบบจัดการ Admin', icon: Crown, allowedRoles: ['admin', 'care_manager', 'director'], isAdminOnly: true },
   ];
 
   // ถ้าล็อกอินด้วยชื่อ CG สามารถเห็นแค่หน้า 1 และหน้า 2 เท่านั้น
@@ -149,19 +154,32 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative">
             <button
               onClick={() => setShowRoleMenu(!showRoleMenu)}
-              className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 px-2.5 py-1 rounded-md text-emerald-50 transition-colors cursor-pointer border border-emerald-500/40"
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors cursor-pointer border ${
+                currentRole === 'admin'
+                  ? 'bg-purple-900 hover:bg-purple-800 text-amber-300 border-amber-400/50'
+                  : 'bg-emerald-700 hover:bg-emerald-600 text-emerald-50 border-emerald-500/40'
+              }`}
               title="สลับสิทธิ์การใช้งาน"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
-              <span>สิทธิ์: {currentRole === 'caregiver' ? 'Caregiver (CG)' : 'Care Manager (CM)'}</span>
+              {currentRole === 'admin' ? (
+                <Crown className="w-3.5 h-3.5 text-amber-400" />
+              ) : (
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
+              )}
+              <span>สิทธิ์: {
+                currentRole === 'admin' ? 'ผู้ดูแลระบบ (Admin)' :
+                currentRole === 'director' ? 'ผู้อำนวยการ รพ.สต.' :
+                currentRole === 'care_manager' ? 'Care Manager (CM)' : 'Caregiver (CG)'
+              }</span>
               <ChevronDown className="w-3 h-3" />
             </button>
 
             {showRoleMenu && (
-              <div className="absolute right-0 mt-1 w-56 bg-white text-slate-800 rounded-lg shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in">
+              <div className="absolute right-0 mt-1 w-60 bg-white text-slate-800 rounded-lg shadow-xl border border-slate-200 py-1.5 z-50 text-xs animate-in fade-in">
                 <div className="px-3 py-1.5 border-b border-slate-100 font-semibold text-slate-500 uppercase tracking-wider">
                   สลับมุมมองผู้ใช้งาน
                 </div>
+                {/* 1. Caregiver (CG) */}
                 <button
                   onClick={() => {
                     onSwitchRole('caregiver');
@@ -180,9 +198,12 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                   {currentRole === 'caregiver' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
                 </button>
+
+                {/* 2. Care Manager (CM) */}
                 <button
                   onClick={() => {
                     if (currentRole === 'caregiver') {
+                      setTargetSwitchRole('care_manager');
                       setShowCMPasswordModal(true);
                       setCmErrorMessage(null);
                       setCmPasswordInput('');
@@ -199,17 +220,48 @@ export const Header: React.FC<HeaderProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-teal-500"></span>
                       <span>ผู้จัดการการดูแล (CM)</span>
-                      {currentRole !== 'care_manager' && (
+                      {currentRole === 'caregiver' && (
                         <span className="flex items-center gap-0.5 text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-medium">
                           <Lock className="w-2.5 h-2.5" />
                           <span>ต้องใส่รหัส</span>
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-slate-400 pl-4">เข้าถึงได้ครบทั้ง 7 หน้า (ต้องใส่รหัส CM)</span>
+                    <span className="text-[10px] text-slate-400 pl-4">เข้าถึงได้ครบทั้ง 7 หน้า</span>
                   </div>
                   {currentRole === 'care_manager' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
                 </button>
+
+                {/* 3. Admin (Primary: CM 1) */}
+                <button
+                  onClick={() => {
+                    if (currentRole === 'caregiver') {
+                      setTargetSwitchRole('admin');
+                      setShowCMPasswordModal(true);
+                      setCmErrorMessage(null);
+                      setCmPasswordInput('');
+                    } else {
+                      onSwitchRole('admin');
+                    }
+                    setShowRoleMenu(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-purple-50 transition-colors ${
+                    currentRole === 'admin' ? 'text-purple-900 font-bold bg-purple-50/70' : 'text-slate-700'
+                  }`}
+                >
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <Crown className="w-3 h-3 text-amber-500" />
+                      <span className="font-bold text-purple-900">ผู้ดูแลระบบ (Admin: CM 1)</span>
+                      <span className="flex items-center gap-0.5 text-[9px] bg-purple-100 text-purple-900 px-1.5 py-0.2 rounded font-bold border border-purple-200">
+                        Admin
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-purple-600 pl-5">จัดการรหัสผ่านและสิทธิ์ทั้งระบบ (หน้า 8)</span>
+                  </div>
+                  {currentRole === 'admin' && <CheckCircle2 className="w-3.5 h-3.5 text-purple-700" />}
+                </button>
+
                 <div className="border-t border-slate-100 mt-1 pt-1">
                   <button
                     onClick={() => {

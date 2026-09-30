@@ -89,13 +89,14 @@ export interface CaregiverUser {
   totalVisitQuota: number;
   completedVisits: number;
   pendingVisits: number;
+  isAdmin?: boolean;
 }
 
 export interface StaffMember {
   id: string;
   code: string;
   name: string;
-  role: 'caregiver' | 'care_manager' | 'director';
+  role: 'caregiver' | 'care_manager' | 'director' | 'admin';
   position: string;
   phone: string;
   hospital?: string;
@@ -104,6 +105,7 @@ export interface StaffMember {
   avatarUrl: string;
   password?: string;
   targetPatients?: number;
+  isAdmin?: boolean;
 }
 
 export type TabType = 
@@ -113,7 +115,21 @@ export type TabType =
   | 'cm_audit'
   | 'monthly_report_a4'
   | 'elderly_registry'
-  | 'cg_data_backup';
+  | 'cg_data_backup'
+  | 'admin_panel';
+
+export interface SystemConfig {
+  hospitalName: string;
+  subdistrict: string;
+  district: string;
+  province: string;
+  fiscalYear: string;
+  quotaGroup1: number;
+  quotaGroup2: number;
+  quotaGroup3: number;
+  quotaGroup4: number;
+  adminId: string;
+}
 
 export interface SupplyItem {
   id: string;
