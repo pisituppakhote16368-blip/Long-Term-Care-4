@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Heart, 
   MapPin, 
@@ -21,7 +21,10 @@ import {
   Activity,
   Maximize2,
   Lock,
-  CalendarCheck
+  CalendarCheck,
+  Check,
+  RotateCcw,
+  AlertTriangle
 } from 'lucide-react';
 import { ElderlyPatient, VisitRecord, CaregiverUser } from '../types';
 import { compressImageFile, handleImageFallback, DEFAULT_VISIT_PHOTO, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
@@ -76,56 +79,54 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
   onOpenAddElderly,
   initialSelectedPatientId,
 }) => {
-  // Selected Patient
+  // Selected Patient - Starts EMPTY unless an initial ID was passed explicitly
   const [selectedPatientId, setSelectedPatientId] = useState<string>(
-    initialSelectedPatientId || (patients[0]?.id ?? '')
+    initialSelectedPatientId || ''
   );
 
-  const selectedPatient = patients.find((p) => p.id === selectedPatientId) || patients[0];
+  useEffect(() => {
+    if (initialSelectedPatientId) {
+      setSelectedPatientId(initialSelectedPatientId);
+    }
+  }, [initialSelectedPatientId]);
 
-  // Visit Form State in local timezone
-  const [visitDate, setVisitDate] = useState<string>(() => getTodayDateString());
-  const [visitTime, setVisitTime] = useState<string>(() => getCurrentTimeString());
+  const selectedPatient = patients.find((p) => p.id === selectedPatientId) || null;
+
+  // Visit Date & Time - Starts EMPTY (เอาค่าที่ขึ้นอยู่ออก ให้ CG ลงข้อมูลจริง)
+  const [visitDate, setVisitDate] = useState<string>('');
+  const [visitTime, setVisitTime] = useState<string>('');
 
   // Validation: Check if visit date or time is in the future
   const todayStr = getTodayDateString();
   const curTimeStr = getCurrentTimeString();
-  const isFutureDate = visitDate > todayStr;
-  const isFutureTimeOnSameDay = visitDate === todayStr && visitTime > curTimeStr;
+  const isFutureDate = Boolean(visitDate && visitDate > todayStr);
+  const isFutureTimeOnSameDay = Boolean(visitDate && visitDate === todayStr && visitTime && visitTime > curTimeStr);
   const isFutureVisit = isFutureDate || isFutureTimeOnSameDay;
 
-  // Vital Signs
-  const [weight, setWeight] = useState<number>(55.0);
-  const [height, setHeight] = useState<number>(160);
-  const [bpSystolic, setBpSystolic] = useState<number>(128);
-  const [bpDiastolic, setBpDiastolic] = useState<number>(78);
-  const [pulse, setPulse] = useState<number>(76);
-  const [spo2, setSpo2] = useState<number>(98);
-  const [temp, setTemp] = useState<number>(36.6);
-  const [adlScore, setAdlScore] = useState<number>(selectedPatient?.adlScore || 12);
-  const [taiCategory, setTaiCategory] = useState<string>(
-    selectedPatient?.taiScore || 'B2 (ต้องการความช่วยเหลือในการเคลื่อนไหว)'
-  );
+  // Validation States for required fields
+  const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
 
-  // Chronic & Findings
-  const [chronicSelected, setChronicSelected] = useState<string[]>(
-    selectedPatient?.chronicDiseases || ['ความดันโลหิตสูง (HT)']
-  );
-  const [physicalFindings, setPhysicalFindings] = useState<string[]>([
-    'สุขภาพทั่วไปแข็งแรงดี เดินเหินคล่องตัว',
-  ]);
-  const [examNotes, setExamNotes] = useState<string>(
-    'ผู้สูงอายุตื่นตัวดี พูดคุยโต้ตอบรู้เรื่อง รับประทานอาหารได้ปกติ ตรวจวัดความดันโลหิตอยู่ในเกณฑ์ปกติ ได้ตรวจสอบการรับประทานยาสม่ำเสมอ'
-  );
-  const [carePlan, setCarePlan] = useState<string>(
-    'แนะนำสุขอนามัย การจัดสภาพแวดล้อมเพื่อป้องกันการหกล้ม ส่งเสริมการดื่มน้ำสะอาด และนัดหมายตรวจเยี่ยมครั้งต่อไป'
-  );
+  // Vital Signs - Starts EMPTY so CG must genuinely fill them in
+  const [weight, setWeight] = useState<string>('');
+  const [height, setHeight] = useState<string>('');
+  const [bpSystolic, setBpSystolic] = useState<string>('');
+  const [bpDiastolic, setBpDiastolic] = useState<string>('');
+  const [pulse, setPulse] = useState<string>('');
+  const [spo2, setSpo2] = useState<string>('');
+  const [temp, setTemp] = useState<string>('');
+  
+  // ADL & TAI - Starts EMPTY/UNASSESSED (เอาค่าที่ขึ้นอยู่ออก ให้ประเมินจริง)
+  const [adlScore, setAdlScore] = useState<number | null>(null);
+  const [taiCategory, setTaiCategory] = useState<string>('');
 
-  // Photos
-  const [photos, setPhotos] = useState<string[]>([
-    'https://images.unsplash.com/photo-1576765608535-5f04d1e3f289?w=600&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=600&auto=format&fit=crop&q=80',
-  ]);
+  // Chronic & Findings - Starts EMPTY
+  const [chronicSelected, setChronicSelected] = useState<string[]>([]);
+  const [physicalFindings, setPhysicalFindings] = useState<string[]>([]);
+  const [examNotes, setExamNotes] = useState<string>('');
+  const [carePlan, setCarePlan] = useState<string>('');
+
+  // Photos - Starts EMPTY
+  const [photos, setPhotos] = useState<string[]>([]);
   const [isPhotoZoomOpen, setIsPhotoZoomOpen] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
 
@@ -138,13 +139,14 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
   });
   const [isLocating, setIsLocating] = useState(false);
 
-  // Signature Canvas
+  // Signature Canvas - Starts EMPTY (do not restore stored signature automatically)
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [hasSignature, setHasSignature] = useState(true);
+  const [hasSignature, setHasSignature] = useState(false);
 
   // Toast / Feedback
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [feedbackType, setFeedbackType] = useState<'success' | 'error' | 'warning'>('success');
 
   // Update when selected patient changes
   useEffect(() => {
@@ -156,8 +158,11 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
   }, [selectedPatientId]);
 
   // BMI Calculation
-  const bmi = height > 0 ? Number((weight / Math.pow(height / 100, 2)).toFixed(2)) : 0;
+  const numWeight = parseFloat(weight) || 0;
+  const numHeight = parseFloat(height) || 0;
+  const bmi = numHeight > 0 && numWeight > 0 ? Number((numWeight / Math.pow(numHeight / 100, 2)).toFixed(2)) : 0;
   const getBmiStatus = (val: number) => {
+    if (val <= 0) return { text: 'รอระบุน้ำหนัก/ส่วนสูง', color: 'text-slate-500 bg-slate-100 border-slate-200' };
     if (val < 18.5) return { text: 'น้ำหนักน้อย / ผอม', color: 'text-amber-600 bg-amber-50 border-amber-200' };
     if (val <= 22.9) return { text: 'ปกติ (สมส่วน)', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
     if (val <= 24.9) return { text: 'ท้วม / โรคอ้วนระดับ 1', color: 'text-orange-600 bg-orange-50 border-orange-200' };
@@ -184,24 +189,14 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
       const img = new Image();
       img.onload = () => {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setHasSignature(true);
       };
       img.src = stored;
       return;
     }
 
-    // Draw pretty default signature curve
-    ctx.beginPath();
-    ctx.moveTo(30, 45);
-    ctx.bezierCurveTo(70, 10, 110, 60, 150, 30);
-    ctx.bezierCurveTo(180, 10, 210, 55, 250, 40);
-    ctx.stroke();
-
-    try {
-      const dataUrl = canvas.toDataURL();
-      localStorage.setItem('caregiver_signature', dataUrl);
-    } catch {
-      // ignore
-    }
+    // Keep signature pad clean by default - CG must genuinely sign
+    setHasSignature(false);
   }, [currentUser?.id]);
 
   // Signature canvas handlers
@@ -367,12 +362,78 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
     }
   };
 
+  // Form Validation Errors (required fields)
+  const validationErrors = useMemo(() => {
+    const errs: Record<string, string> = {};
+
+    if (!visitDate.trim()) {
+      errs.visitDate = 'กรุณาระบุวันที่ออกเยี่ยม';
+    }
+    if (!visitTime.trim()) {
+      errs.visitTime = 'กรุณาระบุเวลาที่เข้าเยี่ยม';
+    }
+    if (!weight.trim() || isNaN(Number(weight)) || Number(weight) <= 0) {
+      errs.weight = 'กรุณากรอกน้ำหนัก (กก.)';
+    }
+    if (!height.trim() || isNaN(Number(height)) || Number(height) <= 0) {
+      errs.height = 'กรุณากรอกส่วนสูง (ซม.)';
+    }
+    if (!bpSystolic.trim() || isNaN(Number(bpSystolic)) || Number(bpSystolic) <= 0) {
+      errs.bpSystolic = 'กรุณากรอกความดันตัวบน (Systolic)';
+    }
+    if (!bpDiastolic.trim() || isNaN(Number(bpDiastolic)) || Number(bpDiastolic) <= 0) {
+      errs.bpDiastolic = 'กรุณากรอกความดันตัวล่าง (Diastolic)';
+    }
+    if (!pulse.trim() || isNaN(Number(pulse)) || Number(pulse) <= 0) {
+      errs.pulse = 'กรุณากรอกชีพจร (bpm)';
+    }
+    if (!spo2.trim() || isNaN(Number(spo2)) || Number(spo2) <= 0) {
+      errs.spo2 = 'กรุณากรอกออกซิเจน SpO2 (%)';
+    }
+    if (!temp.trim() || isNaN(Number(temp)) || Number(temp) <= 0) {
+      errs.temp = 'กรุณากรอกอุณหภูมิกาย (°C)';
+    }
+    if (physicalFindings.length === 0) {
+      errs.physicalFindings = 'กรุณาเลือกอาการ/สภาพร่างกายอย่างน้อย 1 รายการ';
+    }
+    if (!examNotes.trim()) {
+      errs.examNotes = 'กรุณากรอกรายละเอียดผลการตรวจ & สภาพความเป็นอยู่';
+    }
+    if (!carePlan.trim()) {
+      errs.carePlan = 'กรุณากรอกแผนการดูแล & กิจกรรมการพยาบาล (Care Plan)';
+    }
+    if (photos.length === 0) {
+      errs.photos = 'กรุณาถ่ายภาพหรืออัปโหลดรูปถ่ายหลักฐานการลงพื้นที่อย่างน้อย 1 ภาพ';
+    }
+    if (!hasSignature) {
+      errs.hasSignature = 'กรุณาลงลายมือชื่อดิจิทัลของผู้ดูแล';
+    }
+
+    return errs;
+  }, [
+    visitDate,
+    visitTime,
+    weight,
+    height,
+    bpSystolic,
+    bpDiastolic,
+    pulse,
+    spo2,
+    temp,
+    physicalFindings,
+    examNotes,
+    carePlan,
+    photos,
+    hasSignature,
+  ]);
+
   // Submit visit
   const handleSubmitVisit = (status: 'draft' | 'submitted') => {
     if (!selectedPatient) return;
 
     // ตรวจสอบ: ต้องรอให้ถึงวันเยี่ยมก่อนถึงจะกดส่งรายงานได้ เพื่อป้องกัน CG ส่งข้อมูลก่อนเวลาส่ง
     if (status === 'submitted' && isFutureVisit) {
+      setFeedbackType('error');
       setFeedbackMessage(
         isFutureDate
           ? `⚠️ ไม่สามารถส่งงานได้: กำหนดเยี่ยมวันที่ ${formatThaiDate(visitDate)} ยังไม่ถึงกำหนดวันจริง (ไม่อนุญาตให้ส่งล่วงหน้า)`
@@ -380,6 +441,45 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
       );
       setTimeout(() => setFeedbackMessage(null), 4500);
       return;
+    }
+
+    // ตรวจสอบความครบถ้วน: เมื่อส่งรายงาน ต้องลงครบทุกช่องก่อนถึงจะส่งรายงานได้!
+    if (status === 'submitted') {
+      const errorCount = Object.keys(validationErrors).length;
+      if (errorCount > 0) {
+        setSubmitAttempted(true);
+        setFeedbackType('error');
+        setFeedbackMessage(
+          `⚠️ ยังกรอกข้อมูลไม่ครบ! กรุณากรอกข้อมูลในช่องที่มีกรอบสีแดง (${errorCount} ช่อง) ให้ครบถ้วนก่อนส่งรายงาน`
+        );
+        setTimeout(() => setFeedbackMessage(null), 5000);
+
+        // Scroll to the first missing section
+        if (validationErrors.visitDate || validationErrors.visitTime) {
+          document.getElementById('visit-section-1')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (
+          validationErrors.weight ||
+          validationErrors.height ||
+          validationErrors.bpSystolic ||
+          validationErrors.bpDiastolic ||
+          validationErrors.pulse ||
+          validationErrors.spo2 ||
+          validationErrors.temp
+        ) {
+          document.getElementById('visit-section-2')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (
+          validationErrors.physicalFindings ||
+          validationErrors.examNotes ||
+          validationErrors.carePlan
+        ) {
+          document.getElementById('visit-section-3')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (validationErrors.photos) {
+          document.getElementById('visit-section-4')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (validationErrors.hasSignature) {
+          document.getElementById('visit-section-5')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
     }
 
     const signatureData = canvasRef.current?.toDataURL() || '';
@@ -394,14 +494,14 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
       caregiverName: currentUser.name,
       visitDate: visitDate,
       visitTime: visitTime,
-      weight,
-      height,
+      weight: parseFloat(weight) || 0,
+      height: parseFloat(height) || 0,
       bmi,
-      bpSystolic,
-      bpDiastolic,
-      pulse,
-      spo2,
-      temp,
+      bpSystolic: parseInt(bpSystolic) || 0,
+      bpDiastolic: parseInt(bpDiastolic) || 0,
+      pulse: parseInt(pulse) || 0,
+      spo2: parseInt(spo2) || 0,
+      temp: parseFloat(temp) || 0,
       adlScore,
       taiCategory,
       chronicSelected,
@@ -417,10 +517,12 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
     };
 
     onSaveVisit(newVisit);
+    setSubmitAttempted(false);
+    setFeedbackType('success');
     setFeedbackMessage(
       status === 'submitted'
-        ? 'บันทึกและส่งรายงานการออกเยี่ยมเข้าสู่ระบบ LTC สำเร็จเรียบร้อย!'
-        : 'บันทึกแบบร่าง (Draft) สำหรับแก้ไขเพิ่มเติมเรียบร้อยแล้ว'
+        ? '✓ บันทึกและส่งรายงานการออกเยี่ยมเข้าสู่ระบบ LTC สำเร็จเรียบร้อย!'
+        : '✓ บันทึกแบบร่าง (Draft) สำหรับแก้ไขเพิ่มเติมเรียบร้อยแล้ว'
     );
     setTimeout(() => setFeedbackMessage(null), 4000);
   };
@@ -746,26 +848,54 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
         {/* Vital Signs Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-xs mb-4">
           {/* Weight */}
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-            <label className="block text-slate-500 font-medium mb-1">น้ำหนัก (กก.)</label>
+          <div className={`p-3 rounded-xl border transition-colors ${
+            submitAttempted && validationErrors.weight
+              ? 'bg-rose-50/80 border-2 border-rose-500 ring-2 ring-rose-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}>
+            <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+              <span>น้ำหนัก (กก.) <span className="text-rose-500 font-bold">*</span></span>
+            </label>
             <input
               type="number"
               step="0.1"
+              placeholder="เช่น 55.0"
               value={weight}
-              onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
-              className="w-full text-base font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-teal-500"
+              onChange={(e) => setWeight(e.target.value)}
+              className={`w-full text-base font-bold bg-white border rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-teal-500 ${
+                submitAttempted && validationErrors.weight ? 'border-rose-400 text-rose-900 bg-rose-50/40' : 'border-slate-300 text-slate-800'
+              }`}
             />
+            {submitAttempted && validationErrors.weight && (
+              <span className="text-[10px] text-rose-600 font-bold block mt-1">
+                * กรุณากรอกน้ำหนัก
+              </span>
+            )}
           </div>
 
           {/* Height */}
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-            <label className="block text-slate-500 font-medium mb-1">ส่วนสูง (ซม.)</label>
+          <div className={`p-3 rounded-xl border transition-colors ${
+            submitAttempted && validationErrors.height
+              ? 'bg-rose-50/80 border-2 border-rose-500 ring-2 ring-rose-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}>
+            <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+              <span>ส่วนสูง (ซม.) <span className="text-rose-500 font-bold">*</span></span>
+            </label>
             <input
               type="number"
+              placeholder="เช่น 160"
               value={height}
-              onChange={(e) => setHeight(parseFloat(e.target.value) || 0)}
-              className="w-full text-base font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-teal-500"
+              onChange={(e) => setHeight(e.target.value)}
+              className={`w-full text-base font-bold bg-white border rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-teal-500 ${
+                submitAttempted && validationErrors.height ? 'border-rose-400 text-rose-900 bg-rose-50/40' : 'border-slate-300 text-slate-800'
+              }`}
             />
+            {submitAttempted && validationErrors.height && (
+              <span className="text-[10px] text-rose-600 font-bold block mt-1">
+                * กรุณากรอกส่วนสูง
+              </span>
+            )}
           </div>
 
           {/* BMI (Calculated) */}
@@ -773,7 +903,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
             <div>
               <span className="block text-slate-500 font-medium mb-1">ดัชนีมวลกาย (BMI)</span>
               <span className="text-base font-black text-teal-800 font-['Prompt',sans-serif] block">
-                {bmi} <span className="text-xs font-normal text-slate-500">kg/m²</span>
+                {bmi > 0 ? bmi : '-'} <span className="text-xs font-normal text-slate-500">kg/m²</span>
               </span>
             </div>
             <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold inline-block ${getBmiStatus(bmi).color}`}>
@@ -782,84 +912,152 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
           </div>
 
           {/* Blood Pressure */}
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 sm:col-span-1">
-            <label className="block text-slate-500 font-medium mb-1">ความดันโลหิต (mmHg)</label>
+          <div className={`p-3 rounded-xl border sm:col-span-1 transition-colors ${
+            submitAttempted && (validationErrors.bpSystolic || validationErrors.bpDiastolic)
+              ? 'bg-rose-50/80 border-2 border-rose-500 ring-2 ring-rose-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}>
+            <label className="block text-slate-700 font-semibold mb-1">
+              ความดันโลหิต (mmHg) <span className="text-rose-500 font-bold">*</span>
+            </label>
             <div className="flex items-center gap-1">
               <input
                 type="number"
-                placeholder="บน"
+                placeholder="บน เช่น 120"
                 value={bpSystolic}
-                onChange={(e) => setBpSystolic(parseInt(e.target.value) || 0)}
+                onChange={(e) => setBpSystolic(e.target.value)}
                 className={`w-1/2 text-sm font-bold bg-white border rounded-lg px-2 py-1.5 ${
-                  bpSystolic >= 140 ? 'border-rose-400 text-rose-700 bg-rose-50' : 'border-slate-300 text-slate-800'
+                  submitAttempted && validationErrors.bpSystolic
+                    ? 'border-2 border-rose-500 text-rose-900 bg-rose-50'
+                    : Number(bpSystolic) >= 140
+                    ? 'border-rose-400 text-rose-700 bg-rose-50'
+                    : 'border-slate-300 text-slate-800'
                 }`}
               />
               <span className="text-slate-400 font-bold">/</span>
               <input
                 type="number"
-                placeholder="ล่าง"
+                placeholder="ล่าง เช่น 80"
                 value={bpDiastolic}
-                onChange={(e) => setBpDiastolic(parseInt(e.target.value) || 0)}
+                onChange={(e) => setBpDiastolic(e.target.value)}
                 className={`w-1/2 text-sm font-bold bg-white border rounded-lg px-2 py-1.5 ${
-                  bpDiastolic >= 90 ? 'border-rose-400 text-rose-700 bg-rose-50' : 'border-slate-300 text-slate-800'
+                  submitAttempted && validationErrors.bpDiastolic
+                    ? 'border-2 border-rose-500 text-rose-900 bg-rose-50'
+                    : Number(bpDiastolic) >= 90
+                    ? 'border-rose-400 text-rose-700 bg-rose-50'
+                    : 'border-slate-300 text-slate-800'
                 }`}
               />
             </div>
-            <span className={`text-[10px] block mt-1 font-medium ${
-              bpSystolic >= 140 || bpDiastolic >= 90 ? 'text-rose-600 font-bold' : 'text-emerald-600'
-            }`}>
-              {bpSystolic >= 140 || bpDiastolic >= 90 ? '⚠️ ความดันสูง' : '✓ ปกติ'}
-            </span>
+            {submitAttempted && (validationErrors.bpSystolic || validationErrors.bpDiastolic) ? (
+              <span className="text-[10px] text-rose-600 font-bold block mt-1">
+                * กรุณากรอกความดัน (บน/ล่าง)
+              </span>
+            ) : (
+              <span className={`text-[10px] block mt-1 font-medium ${
+                Number(bpSystolic) >= 140 || Number(bpDiastolic) >= 90 ? 'text-rose-600 font-bold' : 'text-emerald-600'
+              }`}>
+                {bpSystolic && bpDiastolic ? (Number(bpSystolic) >= 140 || Number(bpDiastolic) >= 90 ? '⚠️ ความดันสูง' : '✓ ปกติ') : '-'}
+              </span>
+            )}
           </div>
 
           {/* Pulse */}
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-            <label className="block text-slate-500 font-medium mb-1">ชีพจร (bpm)</label>
+          <div className={`p-3 rounded-xl border transition-colors ${
+            submitAttempted && validationErrors.pulse
+              ? 'bg-rose-50/80 border-2 border-rose-500 ring-2 ring-rose-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}>
+            <label className="block text-slate-700 font-semibold mb-1">
+              ชีพจร (bpm) <span className="text-rose-500 font-bold">*</span>
+            </label>
             <input
               type="number"
+              placeholder="เช่น 76"
               value={pulse}
-              onChange={(e) => setPulse(parseInt(e.target.value) || 0)}
-              className="w-full text-base font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-teal-500"
+              onChange={(e) => setPulse(e.target.value)}
+              className={`w-full text-base font-bold bg-white border rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-teal-500 ${
+                submitAttempted && validationErrors.pulse ? 'border-rose-400 text-rose-900 bg-rose-50/40' : 'border-slate-300 text-slate-800'
+              }`}
             />
-            <span className="text-[10px] text-slate-500 block mt-1">ครั้งต่อนาที</span>
+            {submitAttempted && validationErrors.pulse ? (
+              <span className="text-[10px] text-rose-600 font-bold block mt-1">
+                * กรุณากรอกชีพจร
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-500 block mt-1">ครั้งต่อนาที</span>
+            )}
           </div>
 
           {/* SpO2 */}
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-            <label className="block text-slate-500 font-medium mb-1">ออกซิเจน SpO2 (%)</label>
+          <div className={`p-3 rounded-xl border transition-colors ${
+            submitAttempted && validationErrors.spo2
+              ? 'bg-rose-50/80 border-2 border-rose-500 ring-2 ring-rose-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}>
+            <label className="block text-slate-700 font-semibold mb-1">
+              ออกซิเจน SpO2 (%) <span className="text-rose-500 font-bold">*</span>
+            </label>
             <input
               type="number"
+              placeholder="เช่น 98"
               value={spo2}
-              onChange={(e) => setSpo2(parseInt(e.target.value) || 0)}
+              onChange={(e) => setSpo2(e.target.value)}
               className={`w-full text-base font-bold bg-white border rounded-lg px-2.5 py-1.5 ${
-                spo2 < 95 ? 'border-rose-400 text-rose-700 bg-rose-50' : 'border-slate-300 text-slate-800'
+                submitAttempted && validationErrors.spo2
+                  ? 'border-rose-400 text-rose-900 bg-rose-50/40'
+                  : Number(spo2) > 0 && Number(spo2) < 95
+                  ? 'border-rose-400 text-rose-700 bg-rose-50'
+                  : 'border-slate-300 text-slate-800'
               }`}
             />
-            <span className={`text-[10px] block mt-1 font-medium ${spo2 < 95 ? 'text-rose-600 font-bold' : 'text-emerald-600'}`}>
-              {spo2 < 95 ? '⚠️ ออกซิเจนต่ำ' : '✓ ปกติดี'}
-            </span>
+            {submitAttempted && validationErrors.spo2 ? (
+              <span className="text-[10px] text-rose-600 font-bold block mt-1">
+                * กรุณากรอก SpO2
+              </span>
+            ) : (
+              <span className={`text-[10px] block mt-1 font-medium ${Number(spo2) > 0 && Number(spo2) < 95 ? 'text-rose-600 font-bold' : 'text-emerald-600'}`}>
+                {spo2 ? (Number(spo2) < 95 ? '⚠️ ออกซิเจนต่ำ' : '✓ ปกติดี') : '-'}
+              </span>
+            )}
           </div>
         </div>
 
         {/* Temperature and Assessment Sub-grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100 text-xs">
           {/* Temperature */}
-          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-            <label className="block text-slate-600 font-semibold mb-1">อุณหภูมิกาย (°C)</label>
+          <div className={`p-3.5 rounded-xl border transition-colors ${
+            submitAttempted && validationErrors.temp
+              ? 'bg-rose-50/80 border-2 border-rose-500 ring-2 ring-rose-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}>
+            <label className="block text-slate-700 font-semibold mb-1">
+              อุณหภูมิกาย (°C) <span className="text-rose-500 font-bold">*</span>
+            </label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
                 step="0.1"
+                placeholder="เช่น 36.6"
                 value={temp}
-                onChange={(e) => setTemp(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setTemp(e.target.value)}
                 className={`w-28 text-base font-bold bg-white border rounded-lg px-3 py-1.5 ${
-                  temp >= 37.5 ? 'border-rose-400 text-rose-700 bg-rose-50' : 'border-slate-300 text-slate-800'
+                  submitAttempted && validationErrors.temp
+                    ? 'border-2 border-rose-500 text-rose-900 bg-rose-50'
+                    : Number(temp) >= 37.5
+                    ? 'border-rose-400 text-rose-700 bg-rose-50'
+                    : 'border-slate-300 text-slate-800'
                 }`}
               />
-              <span className={`text-xs font-semibold ${temp >= 37.5 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                {temp >= 37.5 ? '⚠️ มีไข้' : '✓ ไม่มีไข้'}
+              <span className={`text-xs font-semibold ${Number(temp) >= 37.5 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                {temp ? (Number(temp) >= 37.5 ? '⚠️ มีไข้' : '✓ ไม่มีไข้') : '-'}
               </span>
             </div>
+            {submitAttempted && validationErrors.temp && (
+              <span className="text-[10px] text-rose-600 font-bold block mt-1">
+                * กรุณากรอกอุณหภูมิกาย
+              </span>
+            )}
           </div>
 
           {/* ADL Assessment */}
@@ -970,9 +1168,13 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
         </div>
 
         {/* Rapid Physical findings pills */}
-        <div className="mb-4">
+        <div className={`mb-4 p-3 rounded-xl border transition-colors ${
+          submitAttempted && validationErrors.physicalFindings
+            ? 'bg-rose-50/70 border-2 border-rose-500 ring-2 ring-rose-200'
+            : 'border-transparent'
+        }`}>
           <label className="block text-xs font-bold text-slate-700 mb-2">
-            อาการ / สภาพร่างกายที่ตรวจพบวันนี้:
+            อาการ / สภาพร่างกายที่ตรวจพบวันนี้: <span className="text-rose-500 font-bold">*</span>
           </label>
           <div className="flex flex-wrap gap-1.5">
             {[
@@ -1005,34 +1207,57 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
               );
             })}
           </div>
+          {submitAttempted && validationErrors.physicalFindings && (
+            <span className="text-[11px] text-rose-600 font-bold block mt-2 flex items-center gap-1">
+              * {validationErrors.physicalFindings}
+            </span>
+          )}
         </div>
 
         {/* Text areas */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div>
             <label className="block text-slate-700 font-bold mb-1.5 font-['Prompt',sans-serif]">
-              รายละเอียดผลการตรวจ & สภาพความเป็นอยู่
+              รายละเอียดผลการตรวจ & สภาพความเป็นอยู่ <span className="text-rose-500 font-bold">*</span>
             </label>
             <textarea
               rows={4}
               value={examNotes}
               onChange={(e) => setExamNotes(e.target.value)}
               placeholder="ระบุสภาพร่างกาย สภาพจิตใจ การรับประทานอาหาร การนอนหลับ ยาที่ได้รับ..."
-              className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 text-slate-800 leading-relaxed"
+              className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-teal-500 text-slate-800 leading-relaxed ${
+                submitAttempted && validationErrors.examNotes
+                  ? 'border-2 border-rose-500 bg-rose-50/60 ring-2 ring-rose-200 text-rose-950'
+                  : 'border-slate-300'
+              }`}
             />
+            {submitAttempted && validationErrors.examNotes && (
+              <span className="text-[11px] text-rose-600 font-bold block mt-1 flex items-center gap-1">
+                * {validationErrors.examNotes}
+              </span>
+            )}
           </div>
 
           <div>
             <label className="block text-slate-700 font-bold mb-1.5 font-['Prompt',sans-serif]">
-              แผนการดูแล & กิจกรรมการพยาบาลที่ให้การช่วยเหลือ (Care Plan)
+              แผนการดูแล & กิจกรรมการพยาบาลที่ให้การช่วยเหลือ (Care Plan) <span className="text-rose-500 font-bold">*</span>
             </label>
             <textarea
               rows={4}
               value={carePlan}
               onChange={(e) => setCarePlan(e.target.value)}
               placeholder="ระบุกิจกรรมที่ให้ เช่น เช็ดตัว กายภาพบำบัด พลิกตัว สอนการออกกำลังกาย..."
-              className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 text-slate-800 leading-relaxed"
+              className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-teal-500 text-slate-800 leading-relaxed ${
+                submitAttempted && validationErrors.carePlan
+                  ? 'border-2 border-rose-500 bg-rose-50/60 ring-2 ring-rose-200 text-rose-950'
+                  : 'border-slate-300'
+              }`}
             />
+            {submitAttempted && validationErrors.carePlan && (
+              <span className="text-[11px] text-rose-600 font-bold block mt-1 flex items-center gap-1">
+                * {validationErrors.carePlan}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -1050,10 +1275,14 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Photo Gallery & Upload */}
-          <div>
+          <div className={`p-3 rounded-2xl border transition-colors ${
+            submitAttempted && validationErrors.photos
+              ? 'bg-rose-50/70 border-2 border-rose-500 ring-2 ring-rose-200'
+              : 'border-transparent'
+          }`}>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-slate-700">
-                รูปถ่ายหลักฐานการลงพื้นที่ ({photos.length} ภาพ)
+                รูปถ่ายหลักฐานการลงพื้นที่ ({photos.length} ภาพ) <span className="text-rose-500 font-bold">*</span>
               </label>
               <button
                 type="button"
@@ -1112,7 +1341,11 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
               )}
 
               {/* Upload Drop Target / Trigger */}
-              <label className="border-2 border-dashed border-teal-300 hover:border-teal-500 rounded-xl aspect-4/3 flex flex-col items-center justify-center text-teal-700 bg-teal-50/50 hover:bg-teal-50 cursor-pointer transition-colors p-2 text-center">
+              <label className={`border-2 border-dashed rounded-xl aspect-4/3 flex flex-col items-center justify-center cursor-pointer transition-colors p-2 text-center ${
+                submitAttempted && validationErrors.photos
+                  ? 'border-rose-400 bg-rose-100/60 text-rose-800 hover:bg-rose-100'
+                  : 'border-teal-300 hover:border-teal-500 text-teal-700 bg-teal-50/50 hover:bg-teal-50'
+              }`}>
                 <Camera className="w-6 h-6 mb-1 text-teal-600" />
                 <span className="text-xs font-bold font-['Prompt',sans-serif]">ถ่ายภาพ / อัปโหลด</span>
                 <span className="text-[10px] text-slate-400 mt-0.5">กล้องมือถือ / คลังภาพ</span>
@@ -1125,9 +1358,15 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                 />
               </label>
             </div>
-            <p className="text-[11px] text-slate-500">
-              * ภาพถ่ายจะถูกประทับวันเวลาและพิกัดลงในรายงานประจำเดือนอัตโนมัติ
-            </p>
+            {submitAttempted && validationErrors.photos ? (
+              <span className="text-[11px] text-rose-600 font-bold block flex items-center gap-1">
+                * {validationErrors.photos}
+              </span>
+            ) : (
+              <p className="text-[11px] text-slate-500">
+                * ภาพถ่ายจะถูกประทับวันเวลาและพิกัดลงในรายงานประจำเดือนอัตโนมัติ
+              </p>
+            )}
           </div>
 
           {/* GPS Coordinates & Map Simulation */}
