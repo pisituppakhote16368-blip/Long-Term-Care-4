@@ -12,6 +12,7 @@ import { BarthelModal } from './components/BarthelModal';
 import { TaiModal } from './components/TaiModal';
 import { AddElderlyModal } from './components/AddElderlyModal';
 import { LoginModal } from './components/LoginModal';
+import { ScreenZoomWidget } from './components/ScreenZoomWidget';
 
 import { 
   CURRENT_CAREGIVER, 
@@ -469,6 +470,8 @@ export default function App() {
           </span>
         </div>
       </footer>
+      {/* Floating Screen Zoom Controller for Mobile & Touch devices */}
+      <ScreenZoomWidget isFloating={true} />
     </div>
   );
 }

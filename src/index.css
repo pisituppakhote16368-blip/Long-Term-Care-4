@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+html, body {
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-text-size-adjust: 100%;
+}
+
 @media print {
   @page {
     size: A4 landscape;

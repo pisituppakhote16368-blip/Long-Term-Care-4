@@ -23,6 +23,7 @@ import {
   Crown
 } from 'lucide-react';
 import { CaregiverUser, StaffMember } from '../types';
+import { ScreenZoomWidget } from './ScreenZoomWidget';
 
 interface HeaderProps {
   activeTab: string;
@@ -136,6 +137,12 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-emerald-200 font-light">
             วันนี้: <strong className="font-semibold text-white">25 กันยายน 2569</strong>
           </span>
+
+          {/* Screen Zoom quick controller */}
+          <div className="flex items-center gap-1">
+            <span className="hidden md:inline text-[11px] text-emerald-200">ขนาดหน้าจอ:</span>
+            <ScreenZoomWidget isFloating={false} />
+          </div>
 
           {/* Toggle Header Pin / Scroll with page */}
           <button
