@@ -52,6 +52,8 @@ export const AdminPanelTab: React.FC<AdminPanelTabProps> = ({
   visits,
   onRestoreData,
 }) => {
+  const isCurrentStaffAdmin = currentStaff?.isAdmin || currentStaff?.id === 'cm-01';
+
   const [activeAdminSection, setActiveAdminSection] = useState<'staff' | 'database' | 'config' | 'audit'>('staff');
   
   // Feedback Toast
@@ -83,6 +85,30 @@ export const AdminPanelTab: React.FC<AdminPanelTabProps> = ({
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
+
+  if (!isCurrentStaffAdmin) {
+    return (
+      <div className="bg-white rounded-3xl p-8 sm:p-12 text-center max-w-xl mx-auto shadow-md border border-slate-200 mt-8 space-y-4 animate-in fade-in">
+        <div className="w-16 h-16 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center mx-auto">
+          <Lock className="w-8 h-8 text-amber-700" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-800 font-['Prompt',sans-serif]">
+          สงวนสิทธิ์เฉพาะผู้ดูแลระบบ (Admin Only)
+        </h2>
+        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          ท่านกำลังเข้าใช้งานในฐานะ <strong className="text-slate-800">{currentStaff?.name || 'เจ้าหน้าที่'}</strong> ซึ่งยังไม่มีสิทธิ์ผู้ดูแลระบบ
+        </p>
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-900 text-left space-y-1">
+          <div className="font-bold flex items-center gap-1.5 text-amber-950">
+            <Crown className="w-4 h-4 text-amber-600" />
+            <span>นโยบายความปลอดภัยของระบบ:</span>
+          </div>
+          <div>• เจ้าหน้าที่ระดับ Care Manager (CM) หรือทั่วไป <strong>ไม่สามารถแก้ไขรหัสผ่านได้</strong></div>
+          <div>• สิทธิ์การดูและเปลี่ยนรหัสผ่านสงวนไว้สำหรับ <strong>Admin: นางสาวสิริวิมล สารสวัสดิ์ (CM คนที่ 1)</strong> เท่านั้น</div>
+        </div>
+      </div>
+    );
+  }
 
   // Staff PIN Toggle
   const toggleShowPassword = (staffId: string) => {

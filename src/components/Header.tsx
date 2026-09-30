@@ -100,9 +100,10 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   // ถ้าล็อกอินด้วยชื่อ CG สามารถเห็นแค่หน้า 1 และหน้า 2 เท่านั้น
+  // หน้า 8 (ระบบจัดการ Admin) จะแสดงเฉพาะผู้ที่เป็น Admin (CM คนที่ 1) เท่านั้น
   const visibleTabs = currentRole === 'caregiver'
     ? allTabs.filter(t => t.id === 'visit-log' || t.id === 'my-summary')
-    : allTabs;
+    : allTabs.filter(t => !t.isAdminOnly || isCurrentAdmin);
 
   return (
     <header className={`bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-900 text-white shadow-lg no-print transition-all ${

@@ -386,6 +386,7 @@ export default function App() {
         {activeTab === 'cg-data-backup' && currentRole !== 'caregiver' && (
           <CGDataBackupTab
             currentUser={currentUser}
+            currentStaff={currentStaff}
             patients={patients}
             visits={visits}
             currentRole={currentRole as any}

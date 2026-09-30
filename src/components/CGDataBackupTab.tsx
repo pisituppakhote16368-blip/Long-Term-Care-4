@@ -48,7 +48,8 @@ interface CGDataBackupTabProps {
   currentUser: CaregiverUser;
   patients: ElderlyPatient[];
   visits: VisitRecord[];
-  currentRole: 'caregiver' | 'care_manager' | 'director';
+  currentRole: 'caregiver' | 'care_manager' | 'director' | 'admin';
+  currentStaff?: StaffMember;
   staffList?: StaffMember[];
   onUpdateStaffList?: (staff: StaffMember[]) => void;
   onUpdatePatient?: (patient: ElderlyPatient) => void;
@@ -60,11 +61,15 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
   patients,
   visits,
   currentRole,
+  currentStaff,
   staffList = INITIAL_STAFF_MEMBERS,
   onUpdateStaffList,
   onUpdatePatient,
   onRestoreData,
 }) => {
+  // สิทธิ์ Admin: CM คนที่ 1 (cm-01) หรือผู้ที่มีสิทธิ์ Admin เท่านั้นที่สามารถแก้ไขรหัสผ่านได้ (CM ทั่วไปไม่สามารถแก้ได้)
+  const isAdmin = currentRole === 'admin' || currentStaff?.isAdmin || currentStaff?.id === 'cm-01' || currentUser.isAdmin;
+
   // Active Sub-tab
   const [activeSection, setActiveSection] = useState<'cg' | 'cm' | 'director' | 'patients' | 'backup'>('cg');
 
@@ -174,7 +179,8 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
             code: formCode.trim(),
             position: formPosition.trim(),
             phone: formPhone.trim(),
-            password: formPassword.trim() || '1234',
+            // เฉพาะ Admin เท่านั้นที่แก้ไขรหัสผ่านได้ หากเป็น CM ให้คงรหัสเดิมไว้
+            password: isAdmin ? (formPassword.trim() || s.password || '1234') : (s.password || '1234'),
             avatarUrl: formAvatarUrl.trim() || s.avatarUrl,
             assignedVillage: villagesString,
             assignedArea: villagesString,
@@ -182,7 +188,7 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
         }
         return s;
       });
-      setToastMessage(`✓ ปรับปรุงข้อมูล ${formName.trim()} เรียบร้อยแล้ว`);
+      setToastMessage(`✓ ปรับปรุงข้อมูล ${formName.trim()} เรียบร้อยแล้ว${isAdmin ? '' : ' (รหัสผ่านคงเดิม - แก้ไขได้เฉพาะ Admin)'}`);
     } else {
       // Add new
       const newStaff: StaffMember = {
@@ -192,7 +198,8 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
         position: formPosition.trim(),
         code: formCode.trim(),
         phone: formPhone.trim(),
-        password: formPassword.trim() || '1234',
+        // หากไม่ใช่ Admin ให้ใช้รหัสเริ่มต้น 1234 เสมอ
+        password: isAdmin ? (formPassword.trim() || '1234') : '1234',
         avatarUrl: formAvatarUrl.trim() || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&auto=format&fit=crop&q=80',
         assignedVillage: villagesString,
         assignedArea: villagesString,
@@ -219,7 +226,8 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
           name: directorName.trim(),
           position: directorPos.trim(),
           phone: directorPhone.trim(),
-          password: directorPassword.trim() || '1234',
+          // เฉพาะ Admin เท่านั้นที่เปลี่ยนรหัสผ่าน ผอ. ได้
+          password: isAdmin ? (directorPassword.trim() || s.password || '1234') : (s.password || '1234'),
           avatarUrl: directorAvatar.trim() || s.avatarUrl,
         };
       }
@@ -230,7 +238,7 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
     if (onUpdateStaffList) {
       onUpdateStaffList(updatedList);
     }
-    setToastMessage(`✓ บันทึกข้อมูลผู้อำนวยการ (${directorName}) และรหัสผ่านเรียบร้อยแล้ว`);
+    setToastMessage(`✓ บันทึกข้อมูลผู้อำนวยการ (${directorName}) เรียบร้อยแล้ว${isAdmin ? '' : ' (รหัสผ่านคงเดิม - แก้ไขได้เฉพาะ Admin)'}`);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
@@ -503,7 +511,7 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
                         รหัสผ่านเข้าสู่ระบบ:
                       </span>
                       <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-emerald-200">
-                        {cg.password || '1234'}
+                        {isAdmin ? (cg.password || '1234') : '•••• (เฉพาะ Admin แก้ได้)'}
                       </span>
                     </div>
                   </div>
@@ -516,7 +524,7 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
                     className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center gap-1"
                   >
                     <Edit className="w-3 h-3 text-emerald-700" />
-                    <span>แก้ไขข้อมูล & รหัสผ่าน</span>
+                    <span>{isAdmin ? 'แก้ไขข้อมูล & รหัสผ่าน' : 'แก้ไขข้อมูลเจ้าหน้าที่'}</span>
                   </button>
                 </div>
               </div>
@@ -593,7 +601,7 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
                         รหัสผ่านเข้าสู่ระบบ (PIN):
                       </span>
                       <span className="font-mono font-bold text-slate-900 bg-white px-2.5 py-0.5 rounded border border-teal-200">
-                        {cm.password || '1234'}
+                        {isAdmin ? (cm.password || '1234') : '•••• (เฉพาะ Admin แก้ได้)'}
                       </span>
                     </div>
                   </div>
@@ -606,7 +614,7 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
                     className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center gap-1"
                   >
                     <Edit className="w-3.5 h-3.5 text-teal-700" />
-                    <span>แก้ไขข้อมูล CM & รหัสผ่าน</span>
+                    <span>{isAdmin ? 'แก้ไขข้อมูล CM & รหัสผ่าน' : 'แก้ไขข้อมูล CM'}</span>
                   </button>
                 </div>
               </div>
@@ -705,22 +713,37 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
               </span>
             </div>
 
-            <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5">
-              <label className="block font-bold text-amber-950 mb-1 flex items-center gap-1.5">
-                <Key className="w-4 h-4 text-amber-700" />
-                <span>รหัสผ่านเข้าสู่ระบบสำหรับผู้อำนวยการ (PIN / Password):</span>
-              </label>
+            <div className={`rounded-xl p-3.5 border ${
+              isAdmin ? 'bg-amber-50/70 border-amber-200' : 'bg-slate-100 border-slate-200'
+            }`}>
+              <div className="flex items-center justify-between mb-1">
+                <label className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <Key className="w-4 h-4 text-amber-700" />
+                  <span>รหัสผ่านเข้าสู่ระบบสำหรับผู้อำนวยการ (PIN / Password):</span>
+                </label>
+                {!isAdmin && (
+                  <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                    🔒 เฉพาะ Admin เท่านั้นที่แก้ไขได้
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <input
-                  type="text"
-                  required
-                  value={directorPassword}
+                  type={isAdmin ? "text" : "password"}
+                  disabled={!isAdmin}
+                  value={isAdmin ? directorPassword : '••••'}
                   onChange={(e) => setDirectorPassword(e.target.value)}
                   placeholder="เช่น 1234"
-                  className="p-2 border border-slate-300 rounded-xl bg-white font-mono font-bold text-sm tracking-wider w-40 text-slate-900"
+                  className={`p-2 border rounded-xl font-mono font-bold text-sm tracking-wider w-40 ${
+                    isAdmin 
+                      ? 'border-slate-300 bg-white text-slate-900' 
+                      : 'border-slate-300 bg-slate-200 text-slate-500 cursor-not-allowed'
+                  }`}
                 />
                 <span className="text-slate-500 text-[11px]">
-                  * ผอ. สามารถใช้รหัสผ่านนี้เพื่อล็อกอินอนุมัติเอกสาร A4 ในหน้าเข้าสู่ระบบ
+                  {isAdmin 
+                    ? '* ผอ. สามารถใช้รหัสผ่านนี้เพื่อล็อกอินอนุมัติเอกสาร A4 ในหน้าเข้าสู่ระบบ' 
+                    : '* สิทธิ์ CM ไม่สามารถแก้ไขรหัสผ่านได้ (แก้ไขได้เฉพาะผู้ดูแลระบบ Admin: CM คนที่ 1)'}
                 </span>
               </div>
             </div>
@@ -1079,32 +1102,57 @@ export const CGDataBackupTab: React.FC<CGDataBackupTabProps> = ({
               </div>
 
               {/* Password Setting Field */}
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                <label className="block font-bold text-emerald-950 mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <Key className="w-3.5 h-3.5 text-emerald-700" />
-                    ช่องตั้งรหัสผ่านเข้าสู่ระบบ (PIN / Password):
-                  </span>
-                  <span className="text-[10px] text-emerald-700">แนะนำ: 4-8 หลัก</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="เช่น 1234"
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                    className="w-full p-2 pr-9 border border-slate-300 rounded-lg bg-white text-slate-900 font-mono font-bold text-sm tracking-wider"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+              {isAdmin ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                  <label className="block font-bold text-emerald-950 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <Key className="w-3.5 h-3.5 text-emerald-700" />
+                      ช่องตั้งรหัสผ่านเข้าสู่ระบบ (PIN / Password):
+                    </span>
+                    <span className="text-[10px] text-emerald-700">แนะนำ: 4-8 หลัก</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      placeholder="เช่น 1234"
+                      value={formPassword}
+                      onChange={(e) => setFormPassword(e.target.value)}
+                      className="w-full p-2 pr-9 border border-slate-300 rounded-lg bg-white text-slate-900 font-mono font-bold text-sm tracking-wider"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-slate-100 border border-slate-200 rounded-xl p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1 font-bold text-slate-700">
+                      <Lock className="w-3.5 h-3.5 text-amber-600" />
+                      รหัสผ่านเข้าสู่ระบบ (PIN / Password):
+                    </span>
+                    <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                      🔒 เฉพาะ Admin เท่านั้นที่แก้ไขได้
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <input
+                      type="password"
+                      disabled
+                      value="••••••••"
+                      className="p-1.5 px-3 border border-slate-300 rounded-lg bg-slate-200 text-slate-500 font-mono text-xs w-32 cursor-not-allowed"
+                    />
+                    <span className="text-[11px] text-slate-500">
+                      สิทธิ์ CM ไม่สามารถแก้ไขรหัสผ่านได้ (แก้ไขได้เฉพาะ Admin: CM คนที่ 1 ในหน้า 8)
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
