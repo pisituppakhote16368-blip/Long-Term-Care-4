@@ -484,7 +484,9 @@ export const Header: React.FC<HeaderProps> = ({
                     <KeyRound className="w-3.5 h-3.5 text-teal-600" />
                     <span>รหัสผ่านเข้าสู่ระบบ (PIN / Password):</span>
                   </span>
-                  <span className="text-[11px] text-teal-600 font-medium">รหัสเริ่มต้น: 1234</span>
+                  <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
+                    🔒 สิทธิ์เฉพาะเจ้าหน้าที่
+                  </span>
                 </label>
 
                 <div className="relative">
@@ -495,8 +497,9 @@ export const Header: React.FC<HeaderProps> = ({
                       setCmPasswordInput(e.target.value);
                       setCmErrorMessage(null);
                     }}
-                    placeholder="กรอกรหัสผ่าน 4 หลัก (1234)..."
+                    placeholder="กรอกรหัสผ่านเพื่อยืนยันสิทธิ์..."
                     autoFocus
+                    autoComplete="off"
                     className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold tracking-wider text-slate-800 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all"
                   />
                   <button

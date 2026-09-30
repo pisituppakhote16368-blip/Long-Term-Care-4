@@ -57,10 +57,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [passwordInput, setPasswordInput] = useState<string>(() => {
     try {
       const initialId = localStorage.getItem('caregiver_last_login_staff_id') || staffList[0]?.id || 'cg-01';
+      const initialStaff = staffList.find(s => s.id === initialId);
+      const isCMOrAdmin = initialStaff?.role === 'care_manager' || initialStaff?.role === 'admin' || initialStaff?.isAdmin || initialStaff?.id === 'cm-01';
+      
       const isRem = localStorage.getItem(`caregiver_remember_pwd_${initialId}`) === 'true';
       if (isRem) {
         const savedPwd = localStorage.getItem(`caregiver_saved_pwd_${initialId}`);
         if (savedPwd) return savedPwd;
+      }
+      
+      // สำหรับ CM และ Admin ไม่ต้องโชว์รหัสตรงนี้ (ให้เว้นว่างไว้)
+      if (isCMOrAdmin) {
+        return '';
       }
     } catch {}
     return '1234';
@@ -73,23 +81,38 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   if (!isOpen) return null;
 
   const currentSelectedStaff = staffList.find((s) => s.id === selectedStaffId) || staffList[0];
+  const isSelectedCMOrAdmin = currentSelectedStaff?.role === 'care_manager' || 
+                              currentSelectedStaff?.role === 'admin' || 
+                              currentSelectedStaff?.isAdmin || 
+                              currentSelectedStaff?.id === 'cm-01';
 
   const handleStaffClick = (staff: StaffMember) => {
     setSelectedStaffId(staff.id);
     setErrorMessage(null);
     setInfoMessage(null);
 
+    const isStaffCMOrAdmin = staff.role === 'care_manager' || staff.role === 'admin' || staff.isAdmin || staff.id === 'cm-01';
+
     try {
       const isRem = localStorage.getItem(`caregiver_remember_pwd_${staff.id}`) === 'true';
       setRememberPassword(isRem);
       if (isRem) {
         const savedPwd = localStorage.getItem(`caregiver_saved_pwd_${staff.id}`);
-        setPasswordInput(savedPwd !== null ? savedPwd : (staff.password || '1234'));
+        setPasswordInput(savedPwd || '');
+      } else {
+        // สำหรับ CM และ Admin ไม่ต้องโชว์รหัสตรงนี้
+        if (isStaffCMOrAdmin) {
+          setPasswordInput('');
+        } else {
+          setPasswordInput(staff.password || '1234');
+        }
+      }
+    } catch {
+      if (isStaffCMOrAdmin) {
+        setPasswordInput('');
       } else {
         setPasswordInput(staff.password || '1234');
       }
-    } catch {
-      setPasswordInput(staff.password || '1234');
     }
   };
 
@@ -350,9 +373,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <label className="block text-slate-700 font-bold font-['Prompt',sans-serif]">
                   2. ใส่รหัสผ่านเข้าสู่ระบบ (PIN / Password):
                 </label>
-                <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.2 rounded border border-teal-200">
-                  รหัสเริ่มต้น: <strong>1234</strong>
-                </span>
+                {!isSelectedCMOrAdmin ? (
+                  <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                    รหัสเริ่มต้น: <strong>1234</strong>
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
+                    🔒 สิทธิ์ความปลอดภัยสูง (ต้องกรอกรหัส)
+                  </span>
+                )}
               </div>
 
               <div className="relative">
@@ -360,8 +389,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  placeholder="กรอกรหัสผ่าน 4-8 หลัก..."
+                  placeholder={isSelectedCMOrAdmin ? "กรอกรหัสผ่านเพื่อเข้าใช้งาน..." : "กรอกรหัสผ่าน 4-8 หลัก..."}
                   value={passwordInput}
+                  autoComplete="off"
                   onChange={(e) => {
                     setPasswordInput(e.target.value);
                     setErrorMessage(null);
