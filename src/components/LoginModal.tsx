@@ -12,7 +12,12 @@ import {
   Building2,
   KeyRound,
   AlertCircle,
-  Crown
+  Crown,
+  BookmarkCheck,
+  Trash2,
+  RotateCcw,
+  Check,
+  Delete
 } from 'lucide-react';
 import { StaffMember } from '../types';
 import { INITIAL_STAFF_MEMBERS } from '../data/mockData';
@@ -30,10 +35,40 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   staffList = INITIAL_STAFF_MEMBERS,
   onSelectStaff,
 }) => {
-  const [selectedStaffId, setSelectedStaffId] = useState<string>(staffList[0]?.id || 'cg-01');
-  const [passwordInput, setPasswordInput] = useState<string>('1234');
+  const [selectedStaffId, setSelectedStaffId] = useState<string>(() => {
+    try {
+      const savedStaffId = localStorage.getItem('caregiver_last_login_staff_id');
+      if (savedStaffId && staffList.some(s => s.id === savedStaffId)) {
+        return savedStaffId;
+      }
+    } catch {}
+    return staffList[0]?.id || 'cg-01';
+  });
+
+  const [rememberPassword, setRememberPassword] = useState<boolean>(() => {
+    try {
+      const initialId = localStorage.getItem('caregiver_last_login_staff_id') || staffList[0]?.id || 'cg-01';
+      return localStorage.getItem(`caregiver_remember_pwd_${initialId}`) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [passwordInput, setPasswordInput] = useState<string>(() => {
+    try {
+      const initialId = localStorage.getItem('caregiver_last_login_staff_id') || staffList[0]?.id || 'cg-01';
+      const isRem = localStorage.getItem(`caregiver_remember_pwd_${initialId}`) === 'true';
+      if (isRem) {
+        const savedPwd = localStorage.getItem(`caregiver_saved_pwd_${initialId}`);
+        if (savedPwd) return savedPwd;
+      }
+    } catch {}
+    return '1234';
+  });
+
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -41,8 +76,72 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
   const handleStaffClick = (staff: StaffMember) => {
     setSelectedStaffId(staff.id);
-    setPasswordInput(staff.password || '1234');
     setErrorMessage(null);
+    setInfoMessage(null);
+
+    try {
+      const isRem = localStorage.getItem(`caregiver_remember_pwd_${staff.id}`) === 'true';
+      setRememberPassword(isRem);
+      if (isRem) {
+        const savedPwd = localStorage.getItem(`caregiver_saved_pwd_${staff.id}`);
+        setPasswordInput(savedPwd !== null ? savedPwd : (staff.password || '1234'));
+      } else {
+        setPasswordInput(staff.password || '1234');
+      }
+    } catch {
+      setPasswordInput(staff.password || '1234');
+    }
+  };
+
+  const handleToggleRemember = (checked: boolean) => {
+    setRememberPassword(checked);
+    setErrorMessage(null);
+    try {
+      if (checked) {
+        localStorage.setItem(`caregiver_remember_pwd_${selectedStaffId}`, 'true');
+        localStorage.setItem(`caregiver_saved_pwd_${selectedStaffId}`, passwordInput);
+        setInfoMessage('✓ บันทึกจำรหัสผ่านในเครื่องนี้แล้ว');
+      } else {
+        localStorage.removeItem(`caregiver_remember_pwd_${selectedStaffId}`);
+        localStorage.removeItem(`caregiver_saved_pwd_${selectedStaffId}`);
+        setInfoMessage('ยกเลิกการจำรหัสผ่านแล้ว');
+      }
+      setTimeout(() => setInfoMessage(null), 3000);
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const handleManualSaveRemember = () => {
+    if (!passwordInput.trim()) {
+      setErrorMessage('กรุณาระบุรหัสผ่านก่อนกดจำรหัส');
+      return;
+    }
+    setRememberPassword(true);
+    setErrorMessage(null);
+    try {
+      localStorage.setItem(`caregiver_remember_pwd_${selectedStaffId}`, 'true');
+      localStorage.setItem(`caregiver_saved_pwd_${selectedStaffId}`, passwordInput.trim());
+      localStorage.setItem('caregiver_last_login_staff_id', selectedStaffId);
+      setInfoMessage('✓ บันทึกจำรหัสผ่านของ ' + (currentSelectedStaff?.name || '') + ' เรียบร้อยแล้ว');
+      setTimeout(() => setInfoMessage(null), 3000);
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const handleClearPassword = () => {
+    setPasswordInput('');
+    setRememberPassword(false);
+    setErrorMessage(null);
+    try {
+      localStorage.removeItem(`caregiver_remember_pwd_${selectedStaffId}`);
+      localStorage.removeItem(`caregiver_saved_pwd_${selectedStaffId}`);
+      setInfoMessage('ล้างรหัสผ่านและยกเลิกการจำรหัสในเครื่องเรียบร้อย');
+      setTimeout(() => setInfoMessage(null), 3000);
+    } catch (e) {
+      console.warn(e);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -53,6 +152,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     if (passwordInput.trim() !== correctPassword && passwordInput.trim() !== '1234') {
       setErrorMessage('รหัสผ่านไม่ถูกต้อง (รหัสเริ่มต้นคือ 1234)');
       return;
+    }
+
+    try {
+      localStorage.setItem('caregiver_last_login_staff_id', currentSelectedStaff.id);
+      if (rememberPassword) {
+        localStorage.setItem(`caregiver_remember_pwd_${currentSelectedStaff.id}`, 'true');
+        localStorage.setItem(`caregiver_saved_pwd_${currentSelectedStaff.id}`, passwordInput.trim());
+      } else {
+        localStorage.removeItem(`caregiver_remember_pwd_${currentSelectedStaff.id}`);
+        localStorage.removeItem(`caregiver_saved_pwd_${currentSelectedStaff.id}`);
+      }
+    } catch (e) {
+      console.warn(e);
     }
 
     setErrorMessage(null);
@@ -66,10 +178,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     } else {
       setPasswordInput(prev => (prev.length < 8 ? prev + num : prev));
     }
+    setErrorMessage(null);
   };
 
-  const handleNumpadClear = () => {
-    setPasswordInput('');
+  const handleNumpadBackspace = () => {
+    setPasswordInput(prev => prev.slice(0, -1));
+    setErrorMessage(null);
   };
 
   return (
@@ -252,20 +366,84 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     setPasswordInput(e.target.value);
                     setErrorMessage(null);
                   }}
-                  className="w-full pl-9 pr-10 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 text-slate-900 text-sm font-mono tracking-wider"
+                  className="w-full pl-9 pr-16 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 text-slate-900 text-sm font-mono tracking-wider"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+                
+                <div className="absolute right-2.5 top-2 flex items-center gap-1">
+                  {passwordInput && (
+                    <button
+                      type="button"
+                      onClick={handleClearPassword}
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-slate-100 transition-colors"
+                      title="ล้างรหัสผ่าน"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                    title={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
+              {/* Action Buttons: ปุ่มจำรหัส & ปุ่มล้างรหัส */}
+              <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-1 border-t border-slate-100">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-700 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={rememberPassword}
+                    onChange={(e) => handleToggleRemember(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer"
+                  />
+                  <span className="flex items-center gap-1 text-[11px] sm:text-xs">
+                    <BookmarkCheck className={`w-3.5 h-3.5 ${rememberPassword ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    จำรหัสผ่านในเครื่องนี้
+                  </span>
+                </label>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleManualSaveRemember}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                      rememberPassword 
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 shadow-2xs' 
+                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                    }`}
+                    title="บันทึกจำรหัสผ่านในเครื่องนี้"
+                  >
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>จำรหัส</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearPassword}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                    title="ล้างรหัสผ่านที่กรอก และลบรหัสที่เคยจำไว้ในเครื่อง"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                    <span>ล้างรหัส</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Informational Toast / Alert */}
+              {infoMessage && (
+                <div className="mt-1.5 text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 animate-in fade-in">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{infoMessage}</span>
+                </div>
+              )}
+
               {errorMessage && (
-                <div className="mt-1.5 text-rose-600 text-[11px] font-semibold flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" />
+                <div className="mt-1.5 text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{errorMessage}</span>
                 </div>
               )}
@@ -273,11 +451,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
             {/* Quick Numpad for Mobile / Touch PIN */}
             <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-              <div className="text-[10px] text-slate-500 font-medium mb-1.5 text-center">
-                แป้นพิมพ์ตัวเลขสัมผัส (Quick Touch Numpad):
+              <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium mb-1.5 px-1">
+                <span>แป้นพิมพ์ตัวเลขสัมผัส (Quick Touch Numpad):</span>
+                <span>แตะตัวเลขเพื่อใส่รหัส</span>
               </div>
-              <div className="grid grid-cols-4 gap-1.5 max-w-[280px] mx-auto">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((num) => (
+              <div className="grid grid-cols-4 gap-1.5 max-w-[320px] mx-auto">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
                   <button
                     key={num}
                     type="button"
@@ -287,19 +466,53 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     {num}
                   </button>
                 ))}
+                
+                {/* 0 and Action buttons in Numpad */}
                 <button
                   type="button"
-                  onClick={handleNumpadClear}
-                  className="col-span-2 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-lg font-bold text-xs shadow-2xs transition-colors cursor-pointer"
+                  onClick={() => handleNumpad('0')}
+                  className="py-1.5 bg-white hover:bg-teal-50 border border-slate-200 hover:border-teal-400 rounded-lg font-bold text-slate-800 text-sm shadow-2xs transition-colors cursor-pointer"
                 >
-                  ล้างค่า (Clear)
+                  0
+                </button>
+
+                {/* Backspace 1 digit */}
+                <button
+                  type="button"
+                  onClick={handleNumpadBackspace}
+                  className="py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 rounded-lg font-bold text-xs shadow-2xs transition-colors cursor-pointer"
+                  title="ลบ 1 ตัวอักษร"
+                >
+                  ⌫ ลบ
+                </button>
+
+                {/* Clear all password button */}
+                <button
+                  type="button"
+                  onClick={handleClearPassword}
+                  className="py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-lg font-bold text-xs shadow-2xs transition-colors cursor-pointer flex items-center justify-center gap-1"
+                  title="ล้างรหัสผ่านทั้งหมด"
+                >
+                  <RotateCcw className="w-3 h-3 text-rose-600" />
+                  <span>ล้างรหัส</span>
+                </button>
+
+                {/* Remember password button in numpad */}
+                <button
+                  type="button"
+                  onClick={handleManualSaveRemember}
+                  className="col-span-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg font-bold text-xs shadow-2xs transition-colors cursor-pointer flex items-center justify-center gap-1"
+                  title="จำรหัสผ่านที่กรอกไว้ในเครื่องนี้"
+                >
+                  <BookmarkCheck className="w-3 h-3 text-emerald-600" />
+                  <span>จำรหัส</span>
                 </button>
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full mt-2 py-3 bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md cursor-pointer transition-all flex items-center justify-center gap-2"
+              className="w-full mt-2 py-3 bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md cursor-pointer transition-all flex items-center justify-center gap-2 active:scale-98"
             >
               <CheckCircle2 className="w-4 h-4 text-amber-300" />
               <span>เข้าสู่ระบบในชื่อ {currentSelectedStaff?.name}</span>

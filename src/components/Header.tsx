@@ -20,7 +20,10 @@ import {
   EyeOff,
   AlertCircle,
   X,
-  Crown
+  Crown,
+  BookmarkCheck,
+  RotateCcw,
+  Check
 } from 'lucide-react';
 import { CaregiverUser, StaffMember } from '../types';
 import { ScreenZoomWidget } from './ScreenZoomWidget';
@@ -58,20 +61,71 @@ export const Header: React.FC<HeaderProps> = ({
   // ระบบรหัสผ่านสำหรับเข้าใช้งานสิทธิ์ CM (Care Manager) หรือ Admin
   const [showCMPasswordModal, setShowCMPasswordModal] = React.useState<boolean>(false);
   const [targetSwitchRole, setTargetSwitchRole] = React.useState<'care_manager' | 'admin'>('care_manager');
-  const [cmPasswordInput, setCmPasswordInput] = React.useState<string>('');
+  const [rememberCMPassword, setRememberCMPassword] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem('caregiver_remember_cm_pwd') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [cmPasswordInput, setCmPasswordInput] = React.useState<string>(() => {
+    try {
+      if (localStorage.getItem('caregiver_remember_cm_pwd') === 'true') {
+        return localStorage.getItem('caregiver_saved_cm_pwd') || '1234';
+      }
+    } catch {}
+    return '';
+  });
   const [showCMPassword, setShowCMPassword] = React.useState<boolean>(false);
   const [cmErrorMessage, setCmErrorMessage] = React.useState<string | null>(null);
+  const [cmInfoMessage, setCmInfoMessage] = React.useState<string | null>(null);
 
   // ข้อมูล CM ประจำระบบ (CM คนที่ 1 คือ Admin)
   const cmStaff = staffList?.find(s => s.id === 'cm-01') || staffList?.find(s => s.role === 'care_manager');
+
+  const handleClearCMPassword = () => {
+    setCmPasswordInput('');
+    setRememberCMPassword(false);
+    setCmErrorMessage(null);
+    try {
+      localStorage.removeItem('caregiver_remember_cm_pwd');
+      localStorage.removeItem('caregiver_saved_cm_pwd');
+      setCmInfoMessage('ล้างรหัสผ่านและยกเลิกการจำรหัส CM เรียบร้อย');
+      setTimeout(() => setCmInfoMessage(null), 3000);
+    } catch {}
+  };
+
+  const handleSaveRememberCMPassword = () => {
+    if (!cmPasswordInput.trim()) {
+      setCmErrorMessage('กรุณากรอกรหัสผ่านก่อนกดจำรหัส');
+      return;
+    }
+    setRememberCMPassword(true);
+    setCmErrorMessage(null);
+    try {
+      localStorage.setItem('caregiver_remember_cm_pwd', 'true');
+      localStorage.setItem('caregiver_saved_cm_pwd', cmPasswordInput.trim());
+      setCmInfoMessage('✓ บันทึกจำรหัสผ่าน CM ในเครื่องเรียบร้อยแล้ว');
+      setTimeout(() => setCmInfoMessage(null), 3000);
+    } catch {}
+  };
 
   const handleVerifyCMPassword = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const correctPassword = cmStaff?.password || '1234';
     if (cmPasswordInput.trim() === correctPassword || cmPasswordInput.trim() === '1234') {
+      try {
+        if (rememberCMPassword) {
+          localStorage.setItem('caregiver_remember_cm_pwd', 'true');
+          localStorage.setItem('caregiver_saved_cm_pwd', cmPasswordInput.trim());
+        } else {
+          localStorage.removeItem('caregiver_remember_cm_pwd');
+          localStorage.removeItem('caregiver_saved_cm_pwd');
+        }
+      } catch {}
       setCmErrorMessage(null);
+      setCmInfoMessage(null);
       setShowCMPasswordModal(false);
-      setCmPasswordInput('');
       onSwitchRole(targetSwitchRole);
     } else {
       setCmErrorMessage('รหัสผ่านไม่ถูกต้อง (รหัสเริ่มต้น: 1234)');
@@ -454,8 +508,65 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 </div>
 
+                <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-1 border-t border-slate-100">
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-700 font-medium">
+                    <input
+                      type="checkbox"
+                      checked={rememberCMPassword}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setRememberCMPassword(checked);
+                        if (!checked) {
+                          try {
+                            localStorage.removeItem('caregiver_remember_cm_pwd');
+                            localStorage.removeItem('caregiver_saved_cm_pwd');
+                          } catch {}
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300 cursor-pointer"
+                    />
+                    <span className="flex items-center gap-1 text-[11px]">
+                      <BookmarkCheck className={`w-3.5 h-3.5 ${rememberCMPassword ? 'text-teal-600' : 'text-slate-400'}`} />
+                      จำรหัส CM ในเครื่องนี้
+                    </span>
+                  </label>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleSaveRememberCMPassword}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                        rememberCMPassword 
+                          ? 'bg-teal-100 text-teal-800 border-teal-300 shadow-2xs' 
+                          : 'bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-200'
+                      }`}
+                      title="บันทึกจำรหัสผ่าน CM ในเครื่องนี้"
+                    >
+                      <Check className="w-3.5 h-3.5 text-teal-600" />
+                      <span>จำรหัส</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleClearCMPassword}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="ล้างรหัสผ่านและลบข้อมูลจำรหัส"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                      <span>ล้างรหัส</span>
+                    </button>
+                  </div>
+                </div>
+
+                {cmInfoMessage && (
+                  <div className="mt-2 text-xs text-teal-800 bg-teal-50 border border-teal-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 animate-in fade-in font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+                    <span>{cmInfoMessage}</span>
+                  </div>
+                )}
+
                 {cmErrorMessage && (
-                  <div className="mt-2 text-xs text-rose-600 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 animate-in fade-in">
+                  <div className="mt-2 text-xs text-rose-600 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 animate-in fade-in font-medium">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{cmErrorMessage}</span>
                   </div>
@@ -479,13 +590,12 @@ export const Header: React.FC<HeaderProps> = ({
                 ))}
                 <button
                   type="button"
-                  onClick={() => {
-                    setCmPasswordInput('');
-                    setCmErrorMessage(null);
-                  }}
-                  className="py-2.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-rose-200/70"
+                  onClick={handleClearCMPassword}
+                  className="py-2.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-rose-200/70 flex items-center justify-center gap-1"
+                  title="ล้างรหัสผ่าน"
                 >
-                  ล้าง
+                  <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                  <span>ล้างรหัส</span>
                 </button>
                 <button
                   type="button"
@@ -504,8 +614,9 @@ export const Header: React.FC<HeaderProps> = ({
                     setCmErrorMessage(null);
                   }}
                   className="py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-xl text-xs font-bold text-slate-700 transition-colors cursor-pointer border border-slate-200/80"
+                  title="ลบ 1 ตัวอักษร"
                 >
-                  ลบ
+                  ⌫ ลบ
                 </button>
               </div>
 
