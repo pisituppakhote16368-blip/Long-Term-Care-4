@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { ElderlyPatient, VisitRecord, CaregiverUser } from '../types';
 import { compressImageFile, handleImageFallback, DEFAULT_VISIT_PHOTO, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
+import { formatFullPatientAddress, formatVillageLabel } from '../utils/addressUtils';
 
 // Helper functions for date and time calculations in local timezone
 const getTodayDateString = () => {
@@ -79,16 +80,57 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
   onOpenAddElderly,
   initialSelectedPatientId,
 }) => {
+  // Filter patients by caregiver if current user is a caregiver
+  // แสดงเฉพาะคนไข้ของ CG คนนั้นที่ได้รับผิดชอบเท่านั้น
+  const availablePatients = useMemo(() => {
+    if (currentUser.role === 'caregiver') {
+      return patients.filter((p) => 
+        (Boolean(p.caregiverId) && p.caregiverId === currentUser.id) || 
+        (Boolean(p.caregiverName) && p.caregiverName === currentUser.name)
+      );
+    }
+    return patients;
+  }, [patients, currentUser]);
+
   // Selected Patient - Starts EMPTY unless an initial ID was passed explicitly
-  const [selectedPatientId, setSelectedPatientId] = useState<string>(
-    initialSelectedPatientId || ''
-  );
+  const [selectedPatientId, setSelectedPatientId] = useState<string>(() => {
+    if (initialSelectedPatientId) {
+      if (currentUser.role === 'caregiver') {
+        const belongs = patients.some(
+          (p) => p.id === initialSelectedPatientId && 
+          ((p.caregiverId && p.caregiverId === currentUser.id) || (p.caregiverName && p.caregiverName === currentUser.name))
+        );
+        return belongs ? initialSelectedPatientId : '';
+      }
+      return initialSelectedPatientId;
+    }
+    return '';
+  });
 
   useEffect(() => {
     if (initialSelectedPatientId) {
-      setSelectedPatientId(initialSelectedPatientId);
+      if (currentUser.role === 'caregiver') {
+        const belongs = availablePatients.some((p) => p.id === initialSelectedPatientId);
+        if (belongs) {
+          setSelectedPatientId(initialSelectedPatientId);
+        } else {
+          setSelectedPatientId('');
+        }
+      } else {
+        setSelectedPatientId(initialSelectedPatientId);
+      }
     }
-  }, [initialSelectedPatientId]);
+  }, [initialSelectedPatientId, currentUser, availablePatients]);
+
+  // Reset selectedPatientId if user switches or patient doesn't belong to this CG
+  useEffect(() => {
+    if (currentUser.role === 'caregiver' && selectedPatientId) {
+      const exists = availablePatients.some((p) => p.id === selectedPatientId);
+      if (!exists) {
+        setSelectedPatientId('');
+      }
+    }
+  }, [currentUser, availablePatients, selectedPatientId]);
 
   const selectedPatient = patients.find((p) => p.id === selectedPatientId) || null;
 
@@ -148,14 +190,15 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [feedbackType, setFeedbackType] = useState<'success' | 'error' | 'warning'>('success');
 
-  // Update when selected patient changes
-  useEffect(() => {
-    if (selectedPatient) {
-      setAdlScore(selectedPatient.adlScore);
-      setChronicSelected(selectedPatient.chronicDiseases);
-      setTaiCategory(`${selectedPatient.taiScore}`);
-    }
-  }, [selectedPatientId]);
+  // Quick Baseline Fill helper when user explicitly wants to use previous baseline
+  const handleUsePatientBaseline = () => {
+    if (!selectedPatient) return;
+    setAdlScore(selectedPatient.adlScore);
+    setTaiCategory(selectedPatient.taiScore);
+    setChronicSelected(selectedPatient.chronicDiseases);
+    setFeedbackMessage('✓ ดึงค่าประเมิน ADL/TAI และโรคประจำตัวเดิมของผู้สูงอายุเรียบร้อย');
+    setTimeout(() => setFeedbackMessage(null), 3000);
+  };
 
   // BMI Calculation
   const numWeight = parseFloat(weight) || 0;
@@ -278,7 +321,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
             lat: Number(pos.coords.latitude.toFixed(5)),
             lng: Number(pos.coords.longitude.toFixed(5)),
             accuracy: Math.round(pos.coords.accuracy),
-            address: `${selectedPatient?.address || 'บ้านธาตุทอง'} ต.ธาตุทอง อ.สว่างแดนดิน จ.สกลนคร`,
+            address: selectedPatient ? formatFullPatientAddress(selectedPatient) : 'ต.ธาตุทอง อ.สว่างแดนดิน จ.สกลนคร',
           });
           setIsLocating(false);
           setFeedbackMessage('บันทึกพิกัดดาวเทียม GPS แบบเรียลไทม์สำเร็จ');
@@ -292,7 +335,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
             lat: Number(jitterLat.toFixed(5)),
             lng: Number(jitterLng.toFixed(5)),
             accuracy: 4.8,
-            address: `${selectedPatient?.address || 'บ้านธาตุทอง'} ต.ธาตุทอง อ.สว่างแดนดิน จ.สกลนคร`,
+            address: selectedPatient ? formatFullPatientAddress(selectedPatient) : 'ต.ธาตุทอง อ.สว่างแดนดิน จ.สกลนคร',
           });
           setIsLocating(false);
           setFeedbackMessage('จำลองพิกัดเสมือนจริง รพ.สต.ธาตุทอง เรียบร้อย');
@@ -366,6 +409,9 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
   const validationErrors = useMemo(() => {
     const errs: Record<string, string> = {};
 
+    if (!selectedPatientId) {
+      errs.selectedPatientId = 'กรุณาเลือกผู้สูงอายุในความรับผิดชอบ';
+    }
     if (!visitDate.trim()) {
       errs.visitDate = 'กรุณาระบุวันที่ออกเยี่ยม';
     }
@@ -393,6 +439,12 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
     if (!temp.trim() || isNaN(Number(temp)) || Number(temp) <= 0) {
       errs.temp = 'กรุณากรอกอุณหภูมิกาย (°C)';
     }
+    if (adlScore === null || adlScore === undefined) {
+      errs.adlScore = 'กรุณาระบุหรือเปิดประเมินคะแนน Barthel ADL';
+    }
+    if (!taiCategory.trim()) {
+      errs.taiCategory = 'กรุณาเลือกเกณฑ์การจำแนก TAI';
+    }
     if (physicalFindings.length === 0) {
       errs.physicalFindings = 'กรุณาเลือกอาการ/สภาพร่างกายอย่างน้อย 1 รายการ';
     }
@@ -411,6 +463,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
 
     return errs;
   }, [
+    selectedPatientId,
     visitDate,
     visitTime,
     weight,
@@ -420,6 +473,8 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
     pulse,
     spo2,
     temp,
+    adlScore,
+    taiCategory,
     physicalFindings,
     examNotes,
     carePlan,
@@ -558,7 +613,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
               </span>
             </div>
             <div className="text-[11px] text-slate-500 truncate max-w-[260px] sm:max-w-none">
-              วันเยี่ยม: {visitDate} {visitTime} น. • {selectedPatient?.villageName ? `บ.${selectedPatient.villageName}` : 'ต.ธาตุทอง'} • รหัส CG: {currentUser.code}
+              วันเยี่ยม: {visitDate || 'ระบุวันที่'} {visitTime ? `${visitTime} น.` : ''} • {selectedPatient ? formatVillageLabel(selectedPatient.villageNo, selectedPatient.villageName) : 'ต.ธาตุทอง'} • รหัส CG: {currentUser.code}
             </div>
           </div>
         </div>
@@ -678,11 +733,20 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                 <select
                   value={selectedPatientId}
                   onChange={(e) => setSelectedPatientId(e.target.value)}
-                  className="w-full sm:max-w-xl bg-slate-50 border border-slate-300 text-slate-900 text-sm font-semibold rounded-xl p-2.5 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  className={`w-full sm:max-w-xl text-sm font-semibold rounded-xl p-2.5 focus:ring-2 focus:ring-teal-500 focus:outline-none transition-colors ${
+                    !selectedPatientId
+                      ? 'border-2 border-rose-500 bg-rose-50/60 text-rose-900 ring-2 ring-rose-200'
+                      : 'bg-white border border-emerald-400 text-slate-900'
+                  }`}
                 >
-                  {patients.map((p) => (
+                  <option value="">
+                    {availablePatients.length === 0
+                      ? `-- ไม่พบรายชื่อคนไข้ในความรับผิดชอบของ CG ${currentUser.name} --`
+                      : `-- กรุณาเลือกคนไข้ในความรับผิดชอบของคุณ (${availablePatients.length} ราย) --`}
+                  </option>
+                  {availablePatients.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.age} ปี) - กลุ่ม {p.ltcGroup} ({p.ltcGroup === 1 ? 'ติดสังคม' : p.ltcGroup === 2 ? 'ติดบ้านปานกลาง' : p.ltcGroup === 3 ? 'ติดบ้านมาก' : 'ติดเตียง'}) | {p.villageNo} {p.villageName}
+                      {p.name} ({p.age} ปี) - กลุ่ม {p.ltcGroup} | {formatVillageLabel(p.villageNo, p.villageName)}
                     </option>
                   ))}
                 </select>
@@ -696,6 +760,30 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                   <span className="hidden sm:inline">+ เพิ่มผู้สูงอายุใหม่</span>
                 </button>
               </div>
+              {availablePatients.length === 0 && currentUser.role === 'caregiver' && (
+                <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+                  <span>⚠️ ยังไม่พบคนไข้ในความรับผิดชอบของท่าน สามารถกดปุ่ม <strong>"+ เพิ่มผู้สูงอายุใหม่"</strong> เพื่อลงทะเบียนคนไข้เข้าสู่ความดูแลของท่านได้ทันที</span>
+                </div>
+              )}
+              {!selectedPatientId ? (
+                <span className="text-[11px] text-rose-600 font-bold block mt-1.5 flex items-center gap-1">
+                  * กรุณาเลือกคนไข้ที่ต้องการบันทึกการออกเยี่ยม (ระบบแสดงเฉพาะคนไข้ที่ CG {currentUser.name} ได้รับผิดชอบเท่านั้น)
+                </span>
+              ) : (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-[11px] text-emerald-700 font-bold">
+                    ✓ เลือกแล้ว: {selectedPatient?.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleUsePatientBaseline}
+                    className="text-[10px] text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2 py-0.5 rounded font-semibold cursor-pointer"
+                    title="ดึงคะแนน ADL/TAI และโรคประจำตัวเดิมมาใส่อัตโนมัติ"
+                  >
+                    ⚡ ดึงค่าประเมิน ADL/TAI เดิม
+                  </button>
+                </div>
+              )}
             </div>
 
             {selectedPatient && (
@@ -719,7 +807,9 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-slate-700 font-bold">วันที่ออกเยี่ยม:</label>
+              <label className={`font-bold ${!visitDate ? 'text-rose-600' : 'text-slate-700'}`}>
+                วันที่ออกเยี่ยม: * {!visitDate && <span className="text-[10px] text-rose-600 font-bold">(จำเป็น)</span>}
+              </label>
               {isFutureDate && (
                 <span className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded font-bold flex items-center gap-1">
                   <Lock className="w-2.5 h-2.5" />
@@ -732,16 +822,27 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                 type="date"
                 value={visitDate}
                 onChange={(e) => setVisitDate(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg font-medium focus:ring-2 focus:ring-teal-500 ${
-                  isFutureDate ? 'border-amber-400 bg-amber-50/50 text-amber-900 font-bold' : 'border-slate-300 text-slate-800'
+                className={`w-full px-3 py-2 border rounded-lg font-medium focus:ring-2 focus:ring-teal-500 transition-colors ${
+                  !visitDate
+                    ? 'border-2 border-rose-500 bg-rose-50/60 text-rose-900 ring-2 ring-rose-200'
+                    : isFutureDate
+                    ? 'border-amber-400 bg-amber-50/50 text-amber-900 font-bold'
+                    : 'border-slate-300 text-slate-800'
                 }`}
               />
+              {!visitDate && (
+                <span className="text-[10px] text-rose-600 font-bold block mt-1">
+                  * กรุณาระบุวันที่ออกเยี่ยม
+                </span>
+              )}
             </div>
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-slate-700 font-bold">เวลาที่เข้าเยี่ยม:</label>
+              <label className={`font-bold ${!visitTime ? 'text-rose-600' : 'text-slate-700'}`}>
+                เวลาที่เข้าเยี่ยม: * {!visitTime && <span className="text-[10px] text-rose-600 font-bold">(จำเป็น)</span>}
+              </label>
               {isFutureTimeOnSameDay && (
                 <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded font-bold flex items-center gap-1">
                   <Clock className="w-2.5 h-2.5" />
@@ -754,10 +855,19 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                 type="time"
                 value={visitTime}
                 onChange={(e) => setVisitTime(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg font-medium focus:ring-2 focus:ring-teal-500 ${
-                  isFutureTimeOnSameDay ? 'border-amber-400 bg-amber-50/50 text-amber-900 font-bold' : 'border-slate-300 text-slate-800'
+                className={`w-full px-3 py-2 border rounded-lg font-medium focus:ring-2 focus:ring-teal-500 transition-colors ${
+                  !visitTime
+                    ? 'border-2 border-rose-500 bg-rose-50/60 text-rose-900 ring-2 ring-rose-200'
+                    : isFutureTimeOnSameDay
+                    ? 'border-amber-400 bg-amber-50/50 text-amber-900 font-bold'
+                    : 'border-slate-300 text-slate-800'
                 }`}
               />
+              {!visitTime && (
+                <span className="text-[10px] text-rose-600 font-bold block mt-1">
+                  * กรุณาระบุเวลาที่เข้าเยี่ยม
+                </span>
+              )}
             </div>
           </div>
 
@@ -814,8 +924,8 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
             <input
               type="text"
               readOnly
-              value={`${selectedPatient?.address || ''} หมู่บ้าน${selectedPatient?.villageName || ''} ตำบลธาตุทอง อำเภอสว่างแดนดิน จังหวัดสกลนคร`}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700"
+              value={selectedPatient ? formatFullPatientAddress(selectedPatient) : 'กรุณาเลือกผู้ป่วยเพื่อแสดงที่อยู่'}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700 font-medium"
             />
           </div>
 
@@ -1061,36 +1171,55 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
           </div>
 
           {/* ADL Assessment */}
-          <div className="bg-teal-50/60 p-3.5 rounded-xl border border-teal-200">
+          <div className={`p-3.5 rounded-xl border transition-colors ${
+            adlScore === null || adlScore === undefined
+              ? 'bg-rose-50/70 border-2 border-rose-500 ring-2 ring-rose-200'
+              : 'bg-teal-50/60 border border-teal-200'
+          }`}>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="font-bold text-teal-900 font-['Prompt',sans-serif]">
-                คะแนน Barthel ADL
+              <label className={`font-bold font-['Prompt',sans-serif] ${adlScore === null ? 'text-rose-700' : 'text-teal-900'}`}>
+                คะแนน Barthel ADL *
               </label>
               <button
                 type="button"
-                onClick={() => onOpenBarthelModal(adlScore, (newScore) => setAdlScore(newScore))}
+                onClick={() => onOpenBarthelModal(adlScore || 10, (newScore) => setAdlScore(newScore))}
                 className="text-[11px] bg-teal-700 hover:bg-teal-800 text-white px-2.5 py-1 rounded-md font-semibold cursor-pointer shadow-2xs transition-colors flex items-center gap-1"
               >
                 <Award className="w-3 h-3 text-amber-300" />
                 <span>เปิดแบบประเมิน 10 ข้อ</span>
               </button>
             </div>
-            <div className="flex items-baseline space-x-2">
-              <span className="text-2xl font-black text-teal-800 font-['Prompt',sans-serif]">
-                {adlScore}
-              </span>
-              <span className="text-xs text-slate-600">/ 20 คะแนน</span>
-              <span className="text-xs font-semibold text-teal-700 ml-auto">
-                ({adlScore >= 12 ? 'กลุ่ม 1 ติดสังคม' : adlScore >= 9 ? 'กลุ่ม 2 ติดบ้าน' : adlScore >= 5 ? 'กลุ่ม 3 ติดบ้านมาก' : 'กลุ่ม 4 ติดเตียง'})
-              </span>
-            </div>
+            {adlScore === null || adlScore === undefined ? (
+              <div className="space-y-1">
+                <span className="text-sm font-bold text-rose-600 block">
+                  * ยังไม่ได้ลงคะแนนประเมิน ADL
+                </span>
+                <span className="text-[10px] text-slate-500 block">
+                  คลิก "เปิดแบบประเมิน 10 ข้อ" ด้านบนเพื่อคำนวณคะแนน
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-baseline space-x-2">
+                <span className="text-2xl font-black text-teal-800 font-['Prompt',sans-serif]">
+                  {adlScore}
+                </span>
+                <span className="text-xs text-slate-600">/ 20 คะแนน</span>
+                <span className="text-xs font-semibold text-teal-700 ml-auto">
+                  ({adlScore >= 12 ? 'ติดสังคม' : adlScore >= 5 ? 'ติดบ้าน' : 'ติดเตียง'})
+                </span>
+              </div>
+            )}
           </div>
 
           {/* TAI Category */}
-          <div className="bg-teal-50/60 p-3.5 rounded-xl border border-teal-200">
+          <div className={`p-3.5 rounded-xl border transition-colors ${
+            !taiCategory
+              ? 'bg-rose-50/70 border-2 border-rose-500 ring-2 ring-rose-200'
+              : 'bg-teal-50/60 border border-teal-200'
+          }`}>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="font-bold text-teal-900 font-['Prompt',sans-serif]">
-                เกณฑ์การจำแนก TAI
+              <label className={`font-bold font-['Prompt',sans-serif] ${!taiCategory ? 'text-rose-700' : 'text-teal-900'}`}>
+                เกณฑ์การจำแนก TAI *
               </label>
               <button
                 type="button"
@@ -1104,14 +1233,24 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
             <select
               value={taiCategory}
               onChange={(e) => setTaiCategory(e.target.value)}
-              className="w-full bg-white border border-teal-300 text-teal-950 font-semibold rounded-lg p-2 text-xs"
+              className={`w-full font-semibold rounded-lg p-2 text-xs transition-colors ${
+                !taiCategory
+                  ? 'border-2 border-rose-400 bg-white text-rose-900'
+                  : 'border border-teal-300 text-teal-950 bg-white'
+              }`}
             >
+              <option value="">-- กรุณาเลือกเกณฑ์ TAI (จำเป็น) --</option>
               <option value="B1">B1 (ช่วยเหลือตนเองได้ มีปัญหาการเคลื่อนไหวเล็กน้อย)</option>
-              <option value="B2">B2 (ต้องการความช่วยเหลือในการเคลื่อนไหวและกิจวัตรประจำวัน)</option>
-              <option value="B3">B3 (พึ่งพาผู้อื่นมาก กิจวัตรส่วนใหญ่ไม่สามารถทำเองได้)</option>
-              <option value="C1">C1 (พึ่งพาผู้อื่นมาก มีปัญหาการเคลื่อนย้ายตัว นอนติดเตียง)</option>
-              <option value="C2">C2 (พึ่งพาสมบูรณ์ ติดเตียง ต้องได้รับการดูแลตลอด 24 ชม.)</option>
+              <option value="B2">B2 (ต้องการความช่วยเหลือในการเคลื่อนไหวและกิจวัตร)</option>
+              <option value="B3">B3 (พึ่งพาผู้อื่นมาก กิจวัตรส่วนใหญ่ทำเองไม่ได้)</option>
+              <option value="C1">C1 (พึ่งพาผู้อื่นมาก นอนติดเตียง)</option>
+              <option value="C2">C2 (พึ่งพาสมบูรณ์ ติดเตียงตลอด 24 ชม.)</option>
             </select>
+            {!taiCategory && (
+              <span className="text-[10px] text-rose-600 font-bold block mt-1">
+                * กรุณาเลือกเกณฑ์ TAI
+              </span>
+            )}
           </div>
         </div>
       </div>

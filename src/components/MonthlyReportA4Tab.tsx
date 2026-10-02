@@ -19,6 +19,7 @@ import { ElderlyPatient, VisitRecord, CaregiverUser, StaffMember } from '../type
 import { CURRENT_CARE_MANAGER, HOSPITAL_DIRECTOR, INITIAL_STAFF_MEMBERS } from '../data/mockData';
 import { GarudaEmblem } from './GarudaEmblem';
 import { compressImageFile, handleImageFallback, DEFAULT_PATIENT_AVATAR, DEFAULT_VISIT_PHOTO } from '../utils/imageUtils';
+import { formatFullPatientAddress, formatVillageLabel } from '../utils/addressUtils';
 
 interface MonthlyReportA4TabProps {
   patients: ElderlyPatient[];
@@ -109,13 +110,10 @@ export const MonthlyReportA4Tab: React.FC<MonthlyReportA4TabProps> = ({
     return currentUser;
   }, [selectedCgId, caregiverStaff, currentUser]);
 
-  // กรองผู้สูงอายุที่อยู่ในความดูแลของ CG ที่เลือก
+  // กรองผู้สูงอายุที่อยู่ในความดูแลของ CG ที่เลือกเท่านั้น (ดึงเฉพาะคนไข้ของแต่ละ CG)
   const cgPatients = useMemo(() => {
     if (!activeCg) return [];
-    const list = patients.filter((p) => p.caregiverId === activeCg.id);
-    if (list.length > 0) return list;
-    // กรณี CG ใหม่ที่ยังไม่มีการผูกข้อมูล ให้แสดงรายชื่อ 10 รายเพื่อความสมบูรณ์ของแบบฟอร์ม
-    return patients.slice(0, 10);
+    return patients.filter((p) => (p.caregiverId && p.caregiverId === activeCg.id) || (p.caregiverName && p.caregiverName === activeCg.name));
   }, [patients, activeCg]);
 
   const totalTargetVisits = useMemo(() => {
@@ -137,7 +135,7 @@ export const MonthlyReportA4Tab: React.FC<MonthlyReportA4TabProps> = ({
   const [tempCaption, setTempCaption] = useState('');
   const [printToast, setPrintToast] = useState<string | null>(null);
 
-  // ดึงรูปผู้ป่วยมาจากรายงานที่ส่งมาในแต่ละเดือน (1 รูป/คน) ตามคำขอ
+  // ดึงรูปผู้ป่วยและวันที่จริงจากการเยี่ยมมาใส่ในช่องรูปภาพตามคำขอ
   const evidencePhotos: EvidencePhotoItem[] = useMemo(() => {
     if (!activeCg) return [];
 
@@ -152,6 +150,10 @@ export const MonthlyReportA4Tab: React.FC<MonthlyReportA4TabProps> = ({
         .reverse()
         .find((v) => v.photos && v.photos.length > 0 && !!v.photos[0]);
 
+      // ดึงบันทึกการเยี่ยมจริงล่าสุดเพื่อเอาวันที่จริง
+      const latestRealVisit = [...patientVisits].reverse().find((v) => v.visitDate);
+      const actualVisit = visitWithPhoto || latestRealVisit;
+
       // หากยังไม่มีภาพจากการเยี่ยม ให้ใช้รูปประวัติผู้ป่วยเป็นรูปสำรอง
       const fallbackPhoto = patient.avatarUrl || 'https://images.unsplash.com/photo-1576765608535-5f04d1e3f289?w=600&auto=format&fit=crop&q=80';
       const actualPhoto = visitWithPhoto?.photos[0] || fallbackPhoto;
@@ -159,17 +161,20 @@ export const MonthlyReportA4Tab: React.FC<MonthlyReportA4TabProps> = ({
       const overridden = customPhotos[patient.id];
 
       // ข้อความบรรยายการเยี่ยมบ้าน
-      const defaultCaption = visitWithPhoto?.examNotes
-        ? visitWithPhoto.examNotes.slice(0, 52) + '...'
+      const defaultCaption = actualVisit?.examNotes
+        ? actualVisit.examNotes.slice(0, 52) + '...'
         : `ตรวจประเมิน ADL (${patient.adlScore}), วัดสัญญาณชีพและดูแลสุขภาพสม่ำเสมอ`;
 
-      const visitDateStr = visitWithPhoto
-        ? `${visitWithPhoto.visitDate} ${visitWithPhoto.visitTime || '10:00'} น.`
-        : `24 ${selectedMonth.slice(0, 3)}. ${selectedYear} 09:30 น.`;
+      // ดึงวันที่จริงจากการลงพื้นที่จริงมาแสดง
+      const visitDateStr = actualVisit?.visitDate
+        ? `วันที่ ${actualVisit.visitDate} ${actualVisit.visitTime ? `เวลา ${actualVisit.visitTime} น.` : ''}`
+        : patient.lastVisitDate && patient.lastVisitDate !== 'ยังไม่มีประวัติเยี่ยม'
+        ? `วันที่ ${patient.lastVisitDate}`
+        : `วันที่ ${selectedMonth} ${selectedYear}`;
 
-      const gpsStr = visitWithPhoto?.coordinates?.lat
-        ? `${visitWithPhoto.coordinates.lat.toFixed(5)} N, ${visitWithPhoto.coordinates.lng.toFixed(5)} E (${patient.villageNo})`
-        : `17.51${index + 2}4 N, 103.45${index + 6}8 E (${patient.villageNo || 'ม.1'})`;
+      const gpsStr = actualVisit?.coordinates?.lat
+        ? `${actualVisit.coordinates.lat.toFixed(5)} N, ${actualVisit.coordinates.lng.toFixed(5)} E (${formatVillageLabel(patient.villageNo, patient.villageName)})`
+        : `17.51${index + 2}4 N, 103.45${index + 6}8 E (${formatVillageLabel(patient.villageNo, patient.villageName)})`;
 
       return {
         id: index + 1,
@@ -767,7 +772,12 @@ export const MonthlyReportA4Tab: React.FC<MonthlyReportA4TabProps> = ({
                   return (
                     <tr key={pt.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
                       <td className="py-1 px-2 border-r border-slate-200 text-center">{idx + 1}</td>
-                      <td className="py-1 px-2 border-r border-slate-200 font-semibold text-slate-900">{pt.name}</td>
+                      <td className="py-1.5 px-2 border-r border-slate-200">
+                        <div className="font-semibold text-slate-900 text-[10px] leading-tight">{pt.name}</div>
+                        <div className="text-[8.5px] text-slate-500 font-normal mt-0.5 leading-tight">
+                          {formatFullPatientAddress(pt)}
+                        </div>
+                      </td>
                       <td className="py-1 px-2 border-r border-slate-200 text-center">{pt.age} ปี</td>
                       <td className="py-1 px-2 border-r border-slate-200 text-center font-bold">
                         <span className={`px-1 py-0.2 rounded text-[9px] ${

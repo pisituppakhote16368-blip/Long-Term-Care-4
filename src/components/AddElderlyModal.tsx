@@ -3,6 +3,7 @@ import { X, UserPlus, Save, AlertTriangle, Calendar, UserCog, Camera } from 'luc
 import { ElderlyPatient, LTCGroup, FISCAL_YEARS_LIST, StaffMember } from '../types';
 import { INITIAL_STAFF_MEMBERS } from '../data/mockData';
 import { compressImageFile, handleImageFallback, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
+import { THAT_THONG_VILLAGES_LIST, getVillageNameByNumber } from '../utils/addressUtils';
 
 interface AddElderlyModalProps {
   isOpen: boolean;
@@ -64,7 +65,7 @@ export const AddElderlyModal: React.FC<AddElderlyModalProps> = ({
       gender: formData.gender,
       address: formData.address,
       villageNo: formData.villageNo,
-      villageName: formData.villageName,
+      villageName: getVillageNameByNumber(formData.villageNo, formData.villageName),
       ltcGroup: formData.ltcGroup,
       taiScore: formData.taiScore,
       adlScore: Number(formData.adlScore),
@@ -258,10 +259,12 @@ export const AddElderlyModal: React.FC<AddElderlyModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">อายุ (ปี)</label>
+              <label className="block text-slate-700 font-semibold mb-1">
+                อายุ (ปี) <span className="text-teal-600 font-normal">(ตั้งแต่ 1 ปีขึ้นไป)</span>
+              </label>
               <input
                 type="number"
-                min="50"
+                min="1"
                 max="120"
                 value={formData.age}
                 onChange={(e) => setFormData({ ...formData, age: Number(e.target.value) })}
@@ -297,17 +300,18 @@ export const AddElderlyModal: React.FC<AddElderlyModalProps> = ({
               <label className="block text-slate-700 font-semibold mb-1">หมู่ที่ / หมู่บ้าน</label>
               <select
                 value={formData.villageNo}
-                onChange={(e) => setFormData({ ...formData, villageNo: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+                onChange={(e) => {
+                  const selNo = e.target.value;
+                  const vName = getVillageNameByNumber(selNo);
+                  setFormData({ ...formData, villageNo: selNo, villageName: vName });
+                }}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 font-medium text-slate-800"
               >
-                <option value="ม.1">ม.1 บ้านธาตุทอง</option>
-                <option value="ม.2">ม.2 บ้านหินโงม</option>
-                <option value="ม.3">ม.3 บ้านโนนสร้างไพ</option>
-                <option value="ม.4">ม.4 บ้านหนองหอย</option>
-                <option value="ม.5">ม.5 บ้านคันชา</option>
-                <option value="ม.6">ม.6 บ้านโคกหลวง</option>
-                <option value="ม.7">ม.7 บ้านเดิด</option>
-                <option value="ม.8">ม.8 บ้านเดื่อ</option>
+                {THAT_THONG_VILLAGES_LIST.map((v) => (
+                  <option key={v.no} value={v.no}>
+                    {v.no} {v.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -345,7 +349,7 @@ export const AddElderlyModal: React.FC<AddElderlyModalProps> = ({
                   onChange={(e) => {
                     const group = Number(e.target.value) as LTCGroup;
                     const taiMap = { 1: 'B1', 2: 'B2', 3: 'B3', 4: 'C1' };
-                    const adlMap = { 1: 18, 2: 10, 3: 6, 4: 2 };
+                    const adlMap = { 1: 10, 2: 8, 3: 4, 4: 2 };
                     setFormData({
                       ...formData,
                       ltcGroup: group,
@@ -355,10 +359,10 @@ export const AddElderlyModal: React.FC<AddElderlyModalProps> = ({
                   }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold text-teal-800"
                 >
-                  <option value={1}>กลุ่ม 1 : ติดสังคม</option>
-                  <option value={2}>กลุ่ม 2 : ติดบ้านปานกลาง</option>
-                  <option value={3}>กลุ่ม 3 : ติดบ้านมาก</option>
-                  <option value={4}>กลุ่ม 4 : ติดเตียง</option>
+                  <option value={1}>• กลุ่มที่ 1 (กลุ่มติดบ้าน): เคลื่อนไหวได้บ้าง มีปัญหาการกินหรือการขับถ่าย แต่ไม่มีภาวะสับสนทางสมอง ADL 5-11</option>
+                  <option value={2}>• กลุ่มที่ 2 (กลุ่มติดบ้านที่มีภาวะสับสน): เคลื่อนไหวได้บ้าง มีภาวะสับสน (เช่น สมองเสื่อมหรือจิตเวช) และอาจมีปัญหาการกินหรือการขับถ่าย ADL 5-11</option>
+                  <option value={3}>• กลุ่มที่ 3 (กลุ่มติดเตียง): เคลื่อนไหวเองไม่ได้ ไม่มีปัญหาการกิน/การขับถ่ายที่รุนแรง หรือมีอาการเจ็บป่วยร่วม ADL 0-4</option>
+                  <option value={4}>• กลุ่มที่ 4 (กลุ่มติดเตียงระยะสุดท้าย): เคลื่อนไหวเองไม่ได้ มีอาการเจ็บป่วยรุนแรง หรืออยู่ในระยะประคับประคองท้ายของชีวิต ADL 0-4</option>
                 </select>
               </div>
 

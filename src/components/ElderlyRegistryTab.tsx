@@ -32,6 +32,7 @@ import {
 import { ElderlyPatient, LTCGroup, FISCAL_YEARS_LIST, StaffMember } from '../types';
 import { INITIAL_STAFF_MEMBERS } from '../data/mockData';
 import { compressImageFile, handleImageFallback, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
+import { formatVillageLabel, getVillageNameByNumber } from '../utils/addressUtils';
 
 interface ElderlyRegistryTabProps {
   patients: ElderlyPatient[];
@@ -107,7 +108,9 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
       const matchVillage = selectedVillage === 'all' || p.villageNo === selectedVillage;
 
       // Group
-      const matchGroup = selectedGroup === 'all' || p.ltcGroup.toString() === selectedGroup;
+      const matchGroup =
+        selectedGroup === 'all' ||
+        (selectedGroup === 'society' ? p.adlScore >= 12 : p.ltcGroup.toString() === selectedGroup);
 
       // Caregiver filter
       const matchCaregiver = selectedCaregiverFilter === 'all' || p.caregiverId === selectedCaregiverFilter || p.caregiverName === selectedCaregiverFilter;
@@ -503,13 +506,14 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
             <select
               value={selectedGroup}
               onChange={(e) => setSelectedGroup(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-slate-700 focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-slate-700 focus:ring-2 focus:ring-teal-500 font-medium"
             >
-              <option value="all">ทุกกลุ่มภาวะพึ่งพิง (กลุ่ม 1-4)</option>
-              <option value="1">กลุ่ม 1 : ติดสังคม ({group1Count})</option>
-              <option value="2">กลุ่ม 2 : ติดบ้านปานกลาง ({group2Count})</option>
-              <option value="3">กลุ่ม 3 : ติดบ้านมาก ({group3Count})</option>
-              <option value="4">กลุ่ม 4 : ติดเตียง ({group4Count})</option>
+              <option value="all">ทุกกลุ่ม LTC / ADL</option>
+              <option value="1">• กลุ่มที่ 1 (กลุ่มติดบ้าน): เคลื่อนไหวได้บ้าง มีปัญหาการกินหรือการขับถ่าย แต่ไม่มีภาวะสับสนทางสมอง ADL 5-11</option>
+              <option value="2">• กลุ่มที่ 2 (กลุ่มติดบ้านที่มีภาวะสับสน): เคลื่อนไหวได้บ้าง มีภาวะสับสน (เช่น สมองเสื่อมหรือจิตเวช) และอาจมีปัญหาการกินหรือการขับถ่าย ADL 5-11</option>
+              <option value="3">• กลุ่มที่ 3 (กลุ่มติดเตียง): เคลื่อนไหวเองไม่ได้ ไม่มีปัญหาการกิน/การขับถ่ายที่รุนแรง หรือมีอาการเจ็บป่วยร่วม ADL 0-4</option>
+              <option value="4">• กลุ่มที่ 4 (กลุ่มติดเตียงระยะสุดท้าย): เคลื่อนไหวเองไม่ได้ มีอาการเจ็บป่วยรุนแรง หรืออยู่ในระยะประคับประคองท้ายของชีวิต ADL 0-4</option>
+              <option value="society">• กลุ่มติดสังคม ADL 12-20</option>
             </select>
           </div>
 
@@ -536,6 +540,31 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
 
       {/* Main Elderly Registry Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+        {/* LTC Criteria Info Banner */}
+        <div className="bg-teal-50/70 border-b border-teal-100 p-4 text-xs text-teal-950">
+          <div className="font-bold text-teal-900 mb-1.5 flex items-center gap-1.5 font-['Prompt',sans-serif]">
+            <HeartPulse className="w-4 h-4 text-teal-700" />
+            <span>เกณฑ์การจำแนกกลุ่มผู้มีภาวะพึ่งพิง (LTC) และกลุ่มติดสังคม:</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-[11px] text-slate-700 leading-snug">
+            <div className="p-2 rounded-xl bg-white border border-teal-200">
+              <span className="font-bold text-emerald-800">• กลุ่มติดสังคม:</span> ADL 12-20
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-teal-200">
+              <span className="font-bold text-teal-900">• กลุ่มที่ 1 (กลุ่มติดบ้าน):</span> เคลื่อนไหวได้บ้าง มีปัญหาการกินหรือการขับถ่าย แต่ไม่มีภาวะสับสนทางสมอง ADL 5-11
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-teal-200">
+              <span className="font-bold text-sky-900">• กลุ่มที่ 2 (กลุ่มติดบ้านที่มีภาวะสับสน):</span> เคลื่อนไหวได้บ้าง มีภาวะสับสน (เช่น สมองเสื่อมหรือจิตเวช) และอาจมีปัญหาการกินหรือการขับถ่าย ADL 5-11
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-teal-200">
+              <span className="font-bold text-amber-900">• กลุ่มที่ 3 (กลุ่มติดเตียง):</span> เคลื่อนไหวเองไม่ได้ ไม่มีปัญหาการกิน/การขับถ่ายที่รุนแรง หรือมีอาการเจ็บป่วยร่วม ADL 0-4
+            </div>
+            <div className="p-2 rounded-xl bg-white border border-teal-200 sm:col-span-2">
+              <span className="font-bold text-rose-900">• กลุ่มที่ 4 (กลุ่มติดเตียงระยะสุดท้าย):</span> เคลื่อนไหวเองไม่ได้ มีอาการเจ็บป่วยรุนแรง หรืออยู่ในระยะประคับประคองท้ายของชีวิต ADL 0-4
+            </div>
+          </div>
+        </div>
+
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <span className="text-xs font-bold text-slate-800">
             แสดงรายชื่อผู้สูงอายุ ({filteredPatients.length} รายการ)
@@ -551,7 +580,7 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
               <tr>
                 <th className="px-4 py-3">ผู้สูงอายุ</th>
                 <th className="px-4 py-3">ปีงบ / สถานะ</th>
-                <th className="px-4 py-3">ข้อมูลพื้นฐาน / ที่อยู่</th>
+                <th className="px-4 py-3">ข้อมูลพื้นฐาน</th>
                 <th className="px-4 py-3">กลุ่ม LTC / ADL</th>
                 <th className="px-4 py-3">โรคประจำตัว</th>
                 <th className="px-4 py-3">Caregiver ผู้ดูแล</th>
@@ -690,25 +719,75 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
                         )}
                       </td>
 
-                      {/* Demographics */}
+                      {/* Demographics - เอาที่อยู่จริงไปโชว์ที่ใบรายงานตามคำขอ */}
                       <td className="px-4 py-3.5 text-slate-600">
                         <div>{patient.gender} • อายุ <strong>{patient.age}</strong> ปี</div>
-                        <div className="text-[11px] text-slate-500">{patient.address} {patient.villageName}</div>
+                        <div className="text-[11px] text-teal-700 font-medium flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 text-teal-600 shrink-0" />
+                          <span>{formatVillageLabel(patient.villageNo, patient.villageName)}</span>
+                        </div>
                       </td>
 
                       {/* LTC Group / ADL */}
-                      <td className="px-4 py-3.5">
-                        <span className={`inline-block text-[11px] px-2 py-0.5 rounded font-bold ${
-                          patient.ltcGroup === 1 ? 'bg-emerald-100 text-emerald-800' :
-                          patient.ltcGroup === 2 ? 'bg-sky-100 text-sky-800' :
-                          patient.ltcGroup === 3 ? 'bg-amber-100 text-amber-800' :
-                          'bg-rose-100 text-rose-800'
-                        }`}>
-                          กลุ่ม {patient.ltcGroup} ({patient.taiScore})
-                        </span>
-                        <div className="text-[10px] text-slate-500 mt-0.5 font-mono font-semibold">
-                          ADL: <strong className="text-teal-800">{patient.adlScore}</strong> / 20
-                        </div>
+                      <td className="px-4 py-3.5 max-w-[270px]">
+                        {patient.adlScore >= 12 ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-block text-[11px] px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800">
+                              • กลุ่มติดสังคม ADL 12-20
+                            </span>
+                            <div className="text-[10px] text-emerald-700 font-semibold font-mono">
+                              คะแนน ADL ได้ {patient.adlScore}/20
+                            </div>
+                          </div>
+                        ) : patient.ltcGroup === 1 ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-block text-[11px] px-2 py-0.5 rounded font-bold bg-teal-100 text-teal-900">
+                              • กลุ่มที่ 1 (กลุ่มติดบ้าน)
+                            </span>
+                            <div className="text-[9.5px] text-slate-600 leading-tight">
+                              เคลื่อนไหวได้บ้าง มีปัญหาการกินหรือการขับถ่าย แต่ไม่มีภาวะสับสนทางสมอง ADL 5-11
+                            </div>
+                            <div className="text-[9.5px] text-teal-800 font-semibold font-mono">
+                              ได้ {patient.adlScore}/20 • TAI {patient.taiScore}
+                            </div>
+                          </div>
+                        ) : patient.ltcGroup === 2 ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-block text-[11px] px-2 py-0.5 rounded font-bold bg-sky-100 text-sky-800">
+                              • กลุ่มที่ 2 (กลุ่มติดบ้านที่มีภาวะสับสน)
+                            </span>
+                            <div className="text-[9.5px] text-slate-600 leading-tight">
+                              เคลื่อนไหวได้บ้าง มีภาวะสับสน (เช่น สมองเสื่อมหรือจิตเวช) และอาจมีปัญหาการกินหรือการขับถ่าย ADL 5-11
+                            </div>
+                            <div className="text-[9.5px] text-sky-800 font-semibold font-mono">
+                              ได้ {patient.adlScore}/20 • TAI {patient.taiScore}
+                            </div>
+                          </div>
+                        ) : patient.ltcGroup === 3 ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-block text-[11px] px-2 py-0.5 rounded font-bold bg-amber-100 text-amber-900">
+                              • กลุ่มที่ 3 (กลุ่มติดเตียง)
+                            </span>
+                            <div className="text-[9.5px] text-slate-600 leading-tight">
+                              เคลื่อนไหวเองไม่ได้ ไม่มีปัญหาการกิน/การขับถ่ายที่รุนแรง หรือมีอาการเจ็บป่วยร่วม ADL 0-4
+                            </div>
+                            <div className="text-[9.5px] text-amber-900 font-semibold font-mono">
+                              ได้ {patient.adlScore}/20 • TAI {patient.taiScore}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-0.5">
+                            <span className="inline-block text-[11px] px-2 py-0.5 rounded font-bold bg-rose-100 text-rose-800">
+                              • กลุ่มที่ 4 (กลุ่มติดเตียงระยะสุดท้าย)
+                            </span>
+                            <div className="text-[9.5px] text-slate-600 leading-tight">
+                              เคลื่อนไหวเองไม่ได้ มีอาการเจ็บป่วยรุนแรง หรืออยู่ในระยะประคับประคองท้ายของชีวิต ADL 0-4
+                            </div>
+                            <div className="text-[9.5px] text-rose-800 font-semibold font-mono">
+                              ได้ {patient.adlScore}/20 • TAI {patient.taiScore}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* Chronic Diseases */}
@@ -1057,7 +1136,7 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
                     {assignTargetPatient.name}
                   </div>
                   <div className="text-slate-600 mt-0.5">
-                    อายุ {assignTargetPatient.age} ปี • {assignTargetPatient.address} {assignTargetPatient.villageName}
+                    อายุ {assignTargetPatient.age} ปี • {assignTargetPatient.address} {formatVillageLabel(assignTargetPatient.villageNo, assignTargetPatient.villageName)}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-[10px] bg-white border border-teal-200 text-teal-800 px-2 py-0.5 rounded font-bold">
@@ -1196,7 +1275,7 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
                     {deleteTargetPatient.name}
                   </div>
                   <div className="text-xs text-slate-600 mt-0.5">
-                    อายุ {deleteTargetPatient.age} ปี • {deleteTargetPatient.villageName || deleteTargetPatient.villageNo}
+                    อายุ {deleteTargetPatient.age} ปี • {formatVillageLabel(deleteTargetPatient.villageNo, deleteTargetPatient.villageName)}
                   </div>
                   <div className="text-[11px] text-slate-400 font-mono">
                     เลขบัตร: {deleteTargetPatient.citizenId}

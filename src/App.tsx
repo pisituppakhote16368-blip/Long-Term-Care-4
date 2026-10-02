@@ -33,6 +33,7 @@ import {
   saveAllStaffToFirestore
 } from './services/firestoreService';
 import { testConnection } from './firebase';
+import { getVillageNameByNumber } from './utils/addressUtils';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('visit-log');
@@ -46,7 +47,12 @@ export default function App() {
 
   // Core Persistent State
   const [currentUser, setCurrentUser] = useState<CaregiverUser>(CURRENT_CAREGIVER);
-  const [patients, setPatients] = useState<ElderlyPatient[]>(INITIAL_ELDERLY_PATIENTS);
+  const [patients, setPatients] = useState<ElderlyPatient[]>(() => {
+    return INITIAL_ELDERLY_PATIENTS.map((p) => ({
+      ...p,
+      villageName: getVillageNameByNumber(p.villageNo, p.villageName),
+    }));
+  });
   const [visits, setVisits] = useState<VisitRecord[]>(INITIAL_VISITS);
 
   // Pre-selected Patient for Visit Log
@@ -81,10 +87,14 @@ export default function App() {
         unsubPatients = subscribePatients(
           (remotePatients) => {
             if (remotePatients && remotePatients.length > 0) {
-              setPatients(remotePatients);
+              const correctedPatients = remotePatients.map((p) => ({
+                ...p,
+                villageName: getVillageNameByNumber(p.villageNo, p.villageName),
+              }));
+              setPatients(correctedPatients);
               setTargetPatientIdForVisit((prev) => {
-                if (prev && remotePatients.some((p) => p.id === prev)) return prev;
-                return remotePatients[0]?.id || '';
+                if (prev && correctedPatients.some((p) => p.id === prev)) return prev;
+                return correctedPatients[0]?.id || '';
               });
             }
             setCloudStatus('connected');
@@ -178,21 +188,29 @@ export default function App() {
   };
 
   const handleUpdatePatient = async (updatedPatient: ElderlyPatient) => {
+    const verifiedPatient: ElderlyPatient = {
+      ...updatedPatient,
+      villageName: getVillageNameByNumber(updatedPatient.villageNo, updatedPatient.villageName),
+    };
     setPatients((prev) =>
-      prev.map((p) => (p.id === updatedPatient.id ? updatedPatient : p))
+      prev.map((p) => (p.id === verifiedPatient.id ? verifiedPatient : p))
     );
     try {
-      await savePatientToFirestore(updatedPatient);
+      await savePatientToFirestore(verifiedPatient);
     } catch (e) {
       console.error('Failed to save updated patient to Firestore:', e);
     }
   };
 
   const handleAddPatient = async (newPatient: ElderlyPatient) => {
-    setPatients((prev) => [newPatient, ...prev]);
-    setTargetPatientIdForVisit(newPatient.id);
+    const verifiedPatient: ElderlyPatient = {
+      ...newPatient,
+      villageName: getVillageNameByNumber(newPatient.villageNo, newPatient.villageName),
+    };
+    setPatients((prev) => [verifiedPatient, ...prev]);
+    setTargetPatientIdForVisit(verifiedPatient.id);
     try {
-      await savePatientToFirestore(newPatient);
+      await savePatientToFirestore(verifiedPatient);
     } catch (e) {
       console.error('Failed to save new patient to Firestore:', e);
     }
@@ -249,6 +267,16 @@ export default function App() {
       }
     } catch (e) {
       console.error('Failed to delete visit from Firestore:', e);
+    }
+  };
+
+  // Update visit record (e.g. edited by CM in CMAuditTab)
+  const handleUpdateVisit = async (updatedVisit: VisitRecord) => {
+    setVisits((prev) => prev.map((v) => (v.id === updatedVisit.id ? updatedVisit : v)));
+    try {
+      await saveVisitToFirestore(updatedVisit);
+    } catch (e) {
+      console.error('Failed to update visit in Firestore:', e);
     }
   };
 
@@ -447,6 +475,8 @@ export default function App() {
             onViewReport={handleNavigateToMonthlyReport}
             onDeleteVisit={handleDeleteVisit}
             onUpdatePatientVisits={handleUpdatePatientVisits}
+            onUpdateVisit={handleUpdateVisit}
+            staffList={staffList}
           />
         )}
 

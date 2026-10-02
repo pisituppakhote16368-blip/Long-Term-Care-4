@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   CheckCircle2, 
   Clock, 
@@ -22,9 +22,15 @@ import {
   X,
   RotateCcw,
   Activity,
-  Heart
+  Heart,
+  Edit3,
+  Save,
+  Check,
+  Filter
 } from 'lucide-react';
-import { ElderlyPatient, VisitRecord, CaregiverUser } from '../types';
+import { ElderlyPatient, VisitRecord, CaregiverUser, StaffMember } from '../types';
+import { INITIAL_STAFF_MEMBERS } from '../data/mockData';
+import { formatVillageLabel, formatFullPatientAddress } from '../utils/addressUtils';
 
 interface CMAuditTabProps {
   patients: ElderlyPatient[];
@@ -35,6 +41,8 @@ interface CMAuditTabProps {
   onViewReport: () => void;
   onDeleteVisit?: (visitId: string, elderlyId: string) => void;
   onUpdatePatientVisits?: (patientId: string, newCount: number) => void;
+  onUpdateVisit?: (updatedVisit: VisitRecord) => void;
+  staffList?: StaffMember[];
 }
 
 export const CMAuditTab: React.FC<CMAuditTabProps> = ({
@@ -46,8 +54,11 @@ export const CMAuditTab: React.FC<CMAuditTabProps> = ({
   onViewReport,
   onDeleteVisit,
   onUpdatePatientVisits,
+  onUpdateVisit,
+  staffList = INITIAL_STAFF_MEMBERS,
 }) => {
   const [selectedMonth, setSelectedMonth] = useState('กันยายน 2569');
+  const [selectedCgFilter, setSelectedCgFilter] = useState<string>('all');
   const [isAudited, setIsAudited] = useState(false);
   const [cmNotes, setCmNotes] = useState(
     'การลงพื้นที่บันทึกสัญญาณชีพและการดูแลแผลกดทับทำได้ดี ขอให้เร่งเยี่ยมผู้ป่วยติดเตียงกลุ่ม 4 (นายประเสริฐ) ให้ครบ 7 ครั้งตามเกณฑ์ก่อนสิ้นเดือน'
@@ -57,9 +68,27 @@ export const CMAuditTab: React.FC<CMAuditTabProps> = ({
   const [selectedPatientForDelete, setSelectedPatientForDelete] = useState<ElderlyPatient | null>(null);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
 
-  // Filter CG assigned patients, fallback to all patients if none match
-  const cgPatients = patients.filter((p) => p.caregiverId === currentUser.id);
-  const displayedPatients = cgPatients.length > 0 ? cgPatients : patients;
+  // Edit Visit Modal State (สำหรับ CM แก้ไขข้อมูลที่ CG ส่งมา)
+  const [selectedPatientForEdit, setSelectedPatientForEdit] = useState<ElderlyPatient | null>(null);
+  const [editingVisit, setEditingVisit] = useState<VisitRecord | null>(null);
+
+  const caregiverStaff = useMemo(() => {
+    return (staffList || INITIAL_STAFF_MEMBERS).filter((s) => s.role === 'caregiver');
+  }, [staffList]);
+
+  // Filter CG assigned patients: if CG role, only own cases; if CM/Director, by selected CG or all
+  const displayedPatients = useMemo(() => {
+    if (currentRole === 'caregiver') {
+      const mine = patients.filter((p) => (p.caregiverId && p.caregiverId === currentUser.id) || (p.caregiverName && p.caregiverName === currentUser.name));
+      return mine.length > 0 ? mine : patients.filter((p) => p.caregiverId === currentUser.id);
+    }
+    if (selectedCgFilter !== 'all') {
+      return patients.filter((p) => p.caregiverId === selectedCgFilter);
+    }
+    return patients;
+  }, [patients, currentRole, currentUser, selectedCgFilter]);
+
+  const cgPatients = displayedPatients;
 
   const totalTargetVisits = displayedPatients.reduce((sum, p) => sum + p.targetVisitsPerMonth, 0);
   const totalCompletedVisits = displayedPatients.reduce((sum, p) => sum + p.visitsThisMonth, 0);
@@ -308,7 +337,29 @@ export const CMAuditTab: React.FC<CMAuditTabProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {currentRole !== 'caregiver' && (
+              <div className="flex items-center gap-1.5 bg-teal-50/90 border border-teal-200 px-3 py-1.5 rounded-xl text-xs">
+                <Filter className="w-3.5 h-3.5 text-teal-700" />
+                <span className="font-bold text-teal-900 font-['Prompt',sans-serif]">เลือก Caregiver:</span>
+                <select
+                  value={selectedCgFilter}
+                  onChange={(e) => setSelectedCgFilter(e.target.value)}
+                  className="bg-white border border-teal-300 text-teal-950 font-semibold px-2 py-1 rounded-lg focus:ring-2 focus:ring-teal-500 text-xs"
+                >
+                  <option value="all">ทั้งหมด (ผู้ดูแลทุกคน - {patients.length} ราย)</option>
+                  {caregiverStaff.map((cg) => {
+                    const count = patients.filter((p) => p.caregiverId === cg.id || p.caregiverName === cg.name).length;
+                    return (
+                      <option key={cg.id} value={cg.id}>
+                        {cg.name} ({count} ราย)
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={onViewReport}
@@ -322,11 +373,11 @@ export const CMAuditTab: React.FC<CMAuditTabProps> = ({
 
         {/* Informative CM Tip Banner */}
         {currentRole !== 'caregiver' && (
-          <div className="bg-rose-50/60 border-b border-rose-100 px-4 py-2 flex items-center justify-between text-[11px] text-rose-900">
+          <div className="bg-amber-50/70 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-[11px] text-amber-950">
             <div className="flex items-center gap-1.5">
-              <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <Edit3 className="w-3.5 h-3.5 text-amber-700 shrink-0" />
               <span>
-                <strong>คำแนะนำ CM/Admin:</strong> สามารถกดปุ่ม <span className="bg-white text-rose-700 font-bold px-1.5 py-0.5 rounded border border-rose-200">ลบจำนวนเยี่ยม</span> (สีแดง) หรือปุ่ม <span className="bg-white text-rose-700 font-bold px-1 py-0.5 rounded border border-rose-200">[-]</span> เพื่อลดยอดครั้งการเยี่ยม หรือลบประวัติการลงเยี่ยมที่ผิดพลาดได้ทันที
+                <strong>คำแนะนำ CM/Admin:</strong> สามารถกดปุ่ม <span className="bg-amber-500 text-white font-bold px-2 py-0.5 rounded-md shadow-2xs">แก้ไขข้อมูลเยี่ยม</span> เพื่อเข้าไปตรวจสอบและแก้ไขข้อมูลสัญญาณชีพ วันที่เวลา หรือผลตรวจที่ CG ส่งมาได้ทันที และกดปุ่ม <span className="bg-rose-100 text-rose-700 font-bold px-1.5 py-0.5 rounded border border-rose-300">ลบจำนวนเยี่ยม</span> เพื่อจัดการยอดครั้งที่ผิดพลาด
               </span>
             </div>
           </div>
@@ -365,7 +416,7 @@ export const CMAuditTab: React.FC<CMAuditTabProps> = ({
                             {patient.name}
                           </div>
                           <div className="text-slate-500 text-[11px]">
-                            อายุ {patient.age} ปี • {patient.villageNo} {patient.villageName}
+                            อายุ {patient.age} ปี • {formatVillageLabel(patient.villageNo, patient.villageName)}
                           </div>
                         </div>
                       </div>
@@ -440,6 +491,56 @@ export const CMAuditTab: React.FC<CMAuditTabProps> = ({
 
                     <td className="px-4 py-3.5 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end space-x-1.5">
+                        {/* ปุ่มกดแก้ไขข้อมูลเยี่ยมที่ CG ส่งมา */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const patientVisits = visits.filter(
+                              (v) => v.elderlyId === patient.id || v.elderlyName === patient.name
+                            );
+                            const visitToEdit: VisitRecord = patientVisits.length > 0
+                              ? { ...patientVisits[patientVisits.length - 1] }
+                              : {
+                                  id: `vis-${Date.now()}`,
+                                  elderlyId: patient.id,
+                                  elderlyName: patient.name,
+                                  elderlyAge: patient.age,
+                                  elderlyGroup: patient.ltcGroup,
+                                  caregiverId: patient.caregiverId,
+                                  caregiverName: patient.caregiverName,
+                                  visitDate: '2026-09-24',
+                                  visitTime: '09:30',
+                                  weight: 55,
+                                  height: 160,
+                                  bmi: 21.48,
+                                  bpSystolic: 124,
+                                  bpDiastolic: 78,
+                                  pulse: 76,
+                                  spo2: 98,
+                                  temp: 36.6,
+                                  adlScore: patient.adlScore,
+                                  taiCategory: patient.taiScore,
+                                  chronicSelected: patient.chronicDiseases,
+                                  physicalFindings: ['สุขภาพทั่วไปแข็งแรงดี เดินเหินคล่องตัว'],
+                                  examNotes: 'ผู้ป่วยรู้สึกตัวดี สัญญาณชีพปกติ รับประทานอาหารได้ดี',
+                                  carePlan: 'วัดสัญญาณชีพ ติดตามการรับประทานยาอย่างต่อเนื่อง ให้คำแนะนำเรื่องสุขอนามัย',
+                                  photos: [],
+                                  coordinates: { lat: 17.51245, lng: 103.45689, accuracy: 5.0, address: formatFullPatientAddress(patient) },
+                                  caregiverSignature: '',
+                                  status: 'submitted',
+                                  submittedAt: '2026-09-24 09:30:00',
+                                  cmReviewStatus: 'approved',
+                                };
+                            setSelectedPatientForEdit(patient);
+                            setEditingVisit(visitToEdit);
+                          }}
+                          className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-all shadow-xs cursor-pointer"
+                          title={`กดเพื่อเข้าไปแก้ไขข้อมูลการเยี่ยมที่ CG ส่งมาของ ${patient.name}`}
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-white" />
+                          <span>แก้ไขข้อมูลเยี่ยม</span>
+                        </button>
+
                         {/* ปุ่มกดลบจำนวนการเยี่ยม */}
                         <button
                           type="button"
@@ -645,7 +746,7 @@ export const CMAuditTab: React.FC<CMAuditTabProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    อายุ {selectedPatientForDelete.age} ปี • {selectedPatientForDelete.villageNo} {selectedPatientForDelete.villageName}
+                    อายุ {selectedPatientForDelete.age} ปี • {formatVillageLabel(selectedPatientForDelete.villageNo, selectedPatientForDelete.villageName)}
                   </p>
                   <div className="mt-2 flex items-center gap-3 text-xs">
                     <span className="text-slate-600">
@@ -794,6 +895,311 @@ export const CMAuditTab: React.FC<CMAuditTabProps> = ({
                 className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs transition-colors cursor-pointer"
               >
                 ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Visit Modal (สำหรับ CM แก้ไขข้อมูลที่ CG ส่งมา) */}
+      {selectedPatientForEdit && editingVisit && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden my-8 animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-teal-800 text-white p-5 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center border border-white/25">
+                  <Edit3 className="w-5 h-5 text-amber-100" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base font-['Prompt',sans-serif]">
+                    แก้ไขข้อมูลการออกเยี่ยมที่ CG ส่งมา
+                  </h3>
+                  <p className="text-xs text-amber-100">
+                    ผู้ป่วย: {selectedPatientForEdit.name} • ผู้ดูแล: {editingVisit.caregiverName || selectedPatientForEdit.caregiverName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPatientForEdit(null);
+                  setEditingVisit(null);
+                }}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors cursor-pointer text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4 overflow-y-auto text-xs flex-1">
+              {/* If multiple visits exist, show visit selection tabs */}
+              {(() => {
+                const pVisits = visits.filter(
+                  (v) => v.elderlyId === selectedPatientForEdit.id || v.elderlyName === selectedPatientForEdit.name
+                );
+                if (pVisits.length <= 1) return null;
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5">
+                    <div className="font-bold text-amber-950 mb-2 flex items-center justify-between text-xs">
+                      <span>พบประวัติการเยี่ยม {pVisits.length} ครั้ง — เลือกครั้งที่ต้องการแก้ไข:</span>
+                      <span className="text-[10.5px] font-normal text-amber-800">คลิกเพื่อสลับครั้ง</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {pVisits.map((v, i) => {
+                        const isSelected = editingVisit.id === v.id;
+                        return (
+                          <button
+                            key={v.id || i}
+                            type="button"
+                            onClick={() => setEditingVisit({ ...v })}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                              isSelected
+                                ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-300'
+                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-amber-100 hover:border-amber-300'
+                            }`}
+                          >
+                            <span>ครั้งที่ {i + 1}</span>
+                            <span className="text-[10px] opacity-85">({v.visitDate || 'ไม่ระบุวัน'} {v.visitTime || ''})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Visit Date & Time */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <h4 className="font-bold text-slate-800 text-xs mb-2.5 flex items-center gap-1.5 font-['Prompt',sans-serif]">
+                  <Calendar className="w-4 h-4 text-teal-600" />
+                  <span>วันและเวลาที่ลงเยี่ยม</span>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">วันที่ออกเยี่ยม:</label>
+                    <input
+                      type="date"
+                      value={editingVisit.visitDate || ''}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, visitDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">เวลาที่เข้าเยี่ยม:</label>
+                    <input
+                      type="time"
+                      value={editingVisit.visitTime || ''}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, visitTime: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Vital Signs */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <h4 className="font-bold text-slate-800 text-xs mb-2.5 flex items-center gap-1.5 font-['Prompt',sans-serif]">
+                  <Activity className="w-4 h-4 text-teal-600" />
+                  <span>สัญญาณชีพ (Vital Signs)</span>
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">ความดันตัวบน (Systolic)</label>
+                    <input
+                      type="number"
+                      value={editingVisit.bpSystolic || ''}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, bpSystolic: Number(e.target.value) })}
+                      placeholder="120"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">ความดันตัวล่าง (Diastolic)</label>
+                    <input
+                      type="number"
+                      value={editingVisit.bpDiastolic || ''}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, bpDiastolic: Number(e.target.value) })}
+                      placeholder="80"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">ชีพจร (Pulse / bpm)</label>
+                    <input
+                      type="number"
+                      value={editingVisit.pulse || ''}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, pulse: Number(e.target.value) })}
+                      placeholder="76"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">ออกซิเจน SpO2 (%)</label>
+                    <input
+                      type="number"
+                      value={editingVisit.spo2 || ''}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, spo2: Number(e.target.value) })}
+                      placeholder="98"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">อุณหภูมิกาย (°C)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={editingVisit.temp || ''}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, temp: Number(e.target.value) })}
+                      placeholder="36.6"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">น้ำหนัก (กก.)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={editingVisit.weight || ''}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, weight: Number(e.target.value) })}
+                      placeholder="55.0"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* ADL & TAI */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <h4 className="font-bold text-slate-800 text-xs mb-2.5 flex items-center gap-1.5 font-['Prompt',sans-serif]">
+                  <Award className="w-4 h-4 text-teal-600" />
+                  <span>การประเมิน ADL และเกณฑ์ TAI</span>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">คะแนน Barthel ADL (0-20):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={editingVisit.adlScore ?? 12}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, adlScore: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-600 font-semibold mb-1">เกณฑ์การจำแนก TAI:</label>
+                    <select
+                      value={editingVisit.taiCategory || selectedPatientForEdit.taiScore}
+                      onChange={(e) => setEditingVisit({ ...editingVisit, taiCategory: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-slate-800 font-semibold"
+                    >
+                      <option value="B1">B1 (ช่วยเหลือตนเองได้ มีปัญหาการเคลื่อนไหวเล็กน้อย)</option>
+                      <option value="B2">B2 (ต้องการความช่วยเหลือในการเคลื่อนไหวและกิจวัตร)</option>
+                      <option value="B3">B3 (พึ่งพาผู้อื่นมาก กิจวัตรส่วนใหญ่ทำเองไม่ได้)</option>
+                      <option value="C1">C1 (พึ่งพาผู้อื่นมาก นอนติดเตียง)</option>
+                      <option value="C2">C2 (พึ่งพาสมบูรณ์ ติดเตียงตลอด 24 ชม.)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Exam Notes & Care Plan */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    รายละเอียดผลการตรวจ & สภาพความเป็นอยู่:
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={editingVisit.examNotes || ''}
+                    onChange={(e) => setEditingVisit({ ...editingVisit, examNotes: e.target.value })}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl bg-white text-slate-800 leading-relaxed text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    แผนการดูแล & กิจกรรมการช่วยเหลือ (Care Plan):
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={editingVisit.carePlan || ''}
+                    onChange={(e) => setEditingVisit({ ...editingVisit, carePlan: e.target.value })}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl bg-white text-slate-800 leading-relaxed text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* CM Review Status & Feedback */}
+              <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 space-y-2">
+                <label className="block font-bold text-amber-900 text-xs">
+                  สถานะการตรวจรับรองของ CM:
+                </label>
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="cmReviewStatus"
+                      value="approved"
+                      checked={editingVisit.cmReviewStatus === 'approved'}
+                      onChange={() => setEditingVisit({ ...editingVisit, cmReviewStatus: 'approved' })}
+                      className="text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="font-semibold text-emerald-800">อนุมัติ / ผ่านเกณฑ์</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="cmReviewStatus"
+                      value="pending"
+                      checked={editingVisit.cmReviewStatus === 'pending' || !editingVisit.cmReviewStatus}
+                      onChange={() => setEditingVisit({ ...editingVisit, cmReviewStatus: 'pending' })}
+                      className="text-amber-600 focus:ring-amber-500"
+                    />
+                    <span className="font-semibold text-amber-800">รอตรวจสอบ</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="cmReviewStatus"
+                      value="need_correction"
+                      checked={editingVisit.cmReviewStatus === 'need_correction'}
+                      onChange={() => setEditingVisit({ ...editingVisit, cmReviewStatus: 'need_correction' })}
+                      className="text-rose-600 focus:ring-rose-500"
+                    />
+                    <span className="font-semibold text-rose-800">ส่งกลับแก้ไข</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPatientForEdit(null);
+                  setEditingVisit(null);
+                }}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onUpdateVisit && editingVisit) {
+                    onUpdateVisit(editingVisit);
+                  }
+                  showToast(`✓ บันทึกแก้ไขข้อมูลการเยี่ยมของ ${selectedPatientForEdit.name} สำเร็จเรียบร้อย`);
+                  setSelectedPatientForEdit(null);
+                  setEditingVisit(null);
+                }}
+                className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
+              >
+                <Save className="w-4 h-4 text-amber-300" />
+                <span>บันทึกการแก้ไขข้อมูล</span>
               </button>
             </div>
           </div>
