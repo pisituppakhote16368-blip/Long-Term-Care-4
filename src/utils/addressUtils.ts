@@ -17,7 +17,7 @@ export const THAT_THONG_VILLAGES_LIST: VillageInfo[] = [
 ];
 
 /**
- * ดึงชื่อหมู่บ้านที่ถูกต้องตามหมายเลขหมู่ (ม.1 - ม.8) ของ ต.ธาตุทอง
+ * วิเคราะห์และแก้ไขข้อมูลหมู่บ้านของผู้ป่วยให้ถูกต้องตรงตาม 8 หมู่บ้านของตำบลธาตุทองเสมอ
  * หมู่ 1: บ้านธาตุทอง
  * หมู่ 2: บ้านหินโงม
  * หมู่ 3: บ้านโนนสร้างไพ
@@ -27,49 +27,88 @@ export const THAT_THONG_VILLAGES_LIST: VillageInfo[] = [
  * หมู่ 7: บ้านเดิด
  * หมู่ 8: บ้านเดื่อ
  */
-export const getVillageNameByNumber = (villageNo?: string, rawVillageName?: string): string => {
-  const combined = `${villageNo || ''} ${rawVillageName || ''}`.trim();
-  
-  // ตรวจหาหมายเลขหมู่ 1 - 8
-  const match = combined.match(/(?:ม\.|หมู่\s*|หมู่ที่\s*|\b)([1-8])\b/);
-  if (match) {
-    const num = parseInt(match[1], 10);
-    const found = THAT_THONG_VILLAGES_LIST.find((v) => v.num === num);
-    if (found) return found.name;
+export const resolvePatientVillage = (patient: {
+  villageNo?: string;
+  villageName?: string;
+  address?: string;
+}): VillageInfo => {
+  const vNo = (patient.villageNo || '').trim();
+  const vName = (patient.villageName || '').trim();
+  const addr = (patient.address || '').trim();
+  const combined = `${vNo} ${vName} ${addr}`.trim();
+
+  let num = 0;
+
+  // 1. ตรวจสอบจาก villageNo ก่อน ถ้ามีหมายเลขหมู่ 1-8 ที่ชัดเจน
+  if (vNo) {
+    const matchNo = vNo.match(/(?:ม\.|หมู่\s*ที่\s*|หมู่\s*|^)\s*([1-8])(?!\d)/);
+    if (matchNo) {
+      num = parseInt(matchNo[1], 10);
+    }
   }
 
-  // ตรวจหาคำสำคัญชื่อหมู่บ้าน
-  if (combined.includes('หินโงม')) return 'บ้านหินโงม';
-  if (combined.includes('โนนสร้างไพ')) return 'บ้านโนนสร้างไพ';
-  if (combined.includes('หนองหอย')) return 'บ้านหนองหอย';
-  if (combined.includes('คันชา')) return 'บ้านคันชา';
-  if (combined.includes('โคกหลวง')) return 'บ้านโคกหลวง';
-  if (combined.includes('เดิด')) return 'บ้านเดิด';
-  if (combined.includes('เดื่อ')) return 'บ้านเดื่อ';
-  if (combined.includes('ธาตุทอง')) return 'บ้านธาตุทอง';
+  // 2. ถ้ายังไม่พบหรือ vNo เป็นค่าเริ่มต้น ให้ตรวจชื่อหมู่บ้านเฉพาะเจาะจง
+  if (!num) {
+    if (combined.includes('หินโงม')) num = 2;
+    else if (combined.includes('โนนสร้างไพ')) num = 3;
+    else if (combined.includes('หนองหอย')) num = 4;
+    else if (combined.includes('คันชา')) num = 5;
+    else if (combined.includes('โคกหลวง')) num = 6;
+    else if (combined.includes('เดิด')) num = 7;
+    else if (combined.includes('เดื่อ')) num = 8;
+  }
 
-  return rawVillageName || 'บ้านธาตุทอง';
+  // 3. ตรวจสอบหมายเลขหมู่จากที่อยู่ (address) เช่น "บ้านเลขที่ 88 หมู่ที่ 2"
+  if (!num && addr) {
+    const matchAddr = addr.match(/(?:หมู่\s*ที่\s*|หมู่\s*|ม\.)\s*([1-8])(?!\d)/);
+    if (matchAddr) {
+      num = parseInt(matchAddr[1], 10);
+    }
+  }
+
+  // 4. ถ้ามีคำว่า ธาตุทอง และไม่มีชื่อหมู่บ้านอื่น
+  if (!num && combined.includes('ธาตุทอง')) {
+    num = 1;
+  }
+
+  // ค่าเริ่มต้นคือ หมู่ 1 บ้านธาตุทอง
+  if (!num || num < 1 || num > 8) {
+    num = 1;
+  }
+
+  return THAT_THONG_VILLAGES_LIST.find((v) => v.num === num) || THAT_THONG_VILLAGES_LIST[0];
+};
+
+/**
+ * ดึงชื่อหมู่บ้านที่ถูกต้องตามหมายเลขหมู่ (ม.1 - ม.8) ของ ต.ธาตุทอง
+ */
+export const getVillageNameByNumber = (
+  villageNo?: string,
+  rawVillageName?: string,
+  address?: string
+): string => {
+  const resolved = resolvePatientVillage({ villageNo, villageName: rawVillageName, address });
+  return resolved.name;
 };
 
 /**
  * ปรับรูปแบบหมายเลขหมู่ให้เป็น 'ม.1' - 'ม.8'
  */
-export const normalizeVillageNo = (villageNo?: string): string => {
-  if (!villageNo) return 'ม.1';
-  const match = villageNo.match(/([1-8])/);
-  if (match) {
-    return `ม.${match[1]}`;
-  }
-  return villageNo;
+export const normalizeVillageNo = (villageNo?: string, address?: string): string => {
+  const resolved = resolvePatientVillage({ villageNo, address });
+  return resolved.no;
 };
 
 /**
  * แสดงชื่อหมู่บ้านพร้อมหมู่ เช่น 'ม.2 บ้านหินโงม'
  */
-export const formatVillageLabel = (villageNo?: string, rawVillageName?: string): string => {
-  const normNo = normalizeVillageNo(villageNo);
-  const name = getVillageNameByNumber(villageNo, rawVillageName);
-  return `${normNo} ${name}`;
+export const formatVillageLabel = (
+  villageNo?: string,
+  rawVillageName?: string,
+  address?: string
+): string => {
+  const resolved = resolvePatientVillage({ villageNo, villageName: rawVillageName, address });
+  return `${resolved.no} ${resolved.name}`;
 };
 
 /**
@@ -81,19 +120,26 @@ export const formatFullPatientAddress = (patient: {
   villageNo?: string;
   villageName?: string;
 }): string => {
-  const villageName = getVillageNameByNumber(patient.villageNo, patient.villageName);
-  const villageNoStr = normalizeVillageNo(patient.villageNo);
-  const villageNum = villageNoStr.replace('ม.', '').trim();
-  
+  const resolved = resolvePatientVillage(patient);
   let rawAddress = (patient.address || '').trim();
-  
-  // ตัดข้อความตำบล อำเภอ จังหวัด หรือหมู่ที่ซ้ำซ้อนออก
+
+  // ตัดข้อความตำบล อำเภอ จังหวัด หรือชื่อหมู่บ้านที่ซ้ำซ้อนออก
   rawAddress = rawAddress
     .replace(/ต\.ธาตุทอง.*/g, '')
     .replace(/ตำบลธาตุทอง.*/g, '')
     .replace(/อ\.สว่างแดนดิน.*/g, '')
+    .replace(/อำเภอสว่างแดนดิน.*/g, '')
     .replace(/จ\.สกลนคร.*/g, '')
+    .replace(/จังหวัดสกลนคร.*/g, '')
     .replace(/บ้านธาตุทอง/g, '')
+    .replace(/บ้านหินโงม/g, '')
+    .replace(/บ้านโนนสร้างไพ/g, '')
+    .replace(/บ้านหนองหอย/g, '')
+    .replace(/บ้านคันชา/g, '')
+    .replace(/บ้านโคกหลวง/g, '')
+    .replace(/บ้านเดิด/g, '')
+    .replace(/บ้านเดื่อ/g, '')
+    .replace(/(?:,\s*|\s+)?(?:หมู่\s*ที่\s*|หมู่\s*|ม\.)\s*[1-8]/gi, '')
     .trim();
 
   // กำหนดเลขที่บ้าน
@@ -104,12 +150,11 @@ export const formatFullPatientAddress = (patient: {
     } else {
       housePart = `บ้านเลขที่ ${rawAddress}`;
     }
-    // ตัดคำว่า หมู่... ที่ติดท้ายบ้านเลขที่ออก เพื่อให้เรียงตามมาตรฐาน
+    // ตัดคำว่า หมู่... ที่ติดท้ายบ้านเลขที่ออก
     housePart = housePart.replace(/(?:,\s*|\s+)หมู่(?:ที่)?\s*\d+.*$/i, '').trim();
   } else {
     housePart = 'บ้านเลขที่ -';
   }
 
-  const villagePart = villageNum ? `หมู่ ${villageNum} ${villageName}` : villageName;
-  return `${housePart} ${villagePart} ต.ธาตุทอง อ.สว่างแดนดิน จ.สกลนคร`;
+  return `${housePart} หมู่ ${resolved.num} ${resolved.name} ต.ธาตุทอง อ.สว่างแดนดิน จ.สกลนคร`;
 };

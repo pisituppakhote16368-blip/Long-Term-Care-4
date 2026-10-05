@@ -27,12 +27,14 @@ import {
   Check,
   Trash2,
   Camera,
-  Save
+  Save,
+  Pencil
 } from 'lucide-react';
 import { ElderlyPatient, LTCGroup, FISCAL_YEARS_LIST, StaffMember } from '../types';
 import { INITIAL_STAFF_MEMBERS } from '../data/mockData';
 import { compressImageFile, handleImageFallback, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
 import { formatVillageLabel, getVillageNameByNumber } from '../utils/addressUtils';
+import { EditElderlyModal } from './EditElderlyModal';
 
 interface ElderlyRegistryTabProps {
   patients: ElderlyPatient[];
@@ -60,6 +62,9 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('2569');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'active' | 'discharged' | 'deceased'>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Edit Patient Modal State
+  const [editTargetPatient, setEditTargetPatient] = useState<ElderlyPatient | null>(null);
 
   // Delete Patient Modal State
   const [deleteTargetPatient, setDeleteTargetPatient] = useState<ElderlyPatient | null>(null);
@@ -105,7 +110,10 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
         p.caregiverName.toLowerCase().includes(searchTerm.toLowerCase());
 
       // Village
-      const matchVillage = selectedVillage === 'all' || p.villageNo === selectedVillage;
+      const matchVillage =
+        selectedVillage === 'all' ||
+        p.villageNo === selectedVillage ||
+        formatVillageLabel(p.villageNo, p.villageName, p.address).startsWith(selectedVillage);
 
       // Group
       const matchGroup =
@@ -724,7 +732,7 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
                         <div>{patient.gender} • อายุ <strong>{patient.age}</strong> ปี</div>
                         <div className="text-[11px] text-teal-700 font-medium flex items-center gap-1 mt-0.5">
                           <MapPin className="w-3 h-3 text-teal-600 shrink-0" />
-                          <span>{formatVillageLabel(patient.villageNo, patient.villageName)}</span>
+                          <span>{formatVillageLabel(patient.villageNo, patient.villageName, patient.address)}</span>
                         </div>
                       </td>
 
@@ -841,6 +849,19 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
                                 + บันทึกเยี่ยม
                               </button>
 
+                              {/* ปุ่มแก้ไขข้อมูลผู้สูงอายุ (เพิ่มตามคำขอ) */}
+                              {onUpdatePatient && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditTargetPatient(patient)}
+                                  className="bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-2.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs hover:shadow"
+                                  title="แก้ไขข้อมูลผู้สูงอายุ (ชื่อ, อายุ, ที่อยู่, หมู่บ้าน, TAI, ADL, CG, เบอร์โทร)"
+                                >
+                                  <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>แก้ไข</span>
+                                </button>
+                              )}
+
                               {/* ปุ่มเลือกผู้รับผิดชอบ (CG Assignment) */}
                               {currentRole !== 'caregiver' && onUpdatePatient && (
                                 <button
@@ -888,15 +909,29 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
                               </button>
                             </>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleRestoreStatus(patient)}
-                              className="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1"
-                              title="คืนสถานะกลับมาดูแลต่อ"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
-                              <span>คืนสถานะดูแล</span>
-                            </button>
+                            <>
+                              {/* ปุ่มแก้ไขข้อมูล */}
+                              {onUpdatePatient && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditTargetPatient(patient)}
+                                  className="bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-2.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                                  title="แก้ไขข้อมูลผู้สูงอายุ"
+                                >
+                                  <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>แก้ไข</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreStatus(patient)}
+                                className="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1"
+                                title="คืนสถานะกลับมาดูแลต่อ"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
+                                <span>คืนสถานะดูแล</span>
+                              </button>
+                            </>
                           )}
 
                           {/* ปุ่มกดลบผู้สูงอายุ (เพิ่มตามคำขอของผู้ใช้) */}
@@ -1430,6 +1465,22 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal: แก้ไขข้อมูลผู้สูงอายุ */}
+      <EditElderlyModal
+        isOpen={Boolean(editTargetPatient)}
+        onClose={() => setEditTargetPatient(null)}
+        patient={editTargetPatient}
+        onUpdate={(updated) => {
+          if (onUpdatePatient) {
+            onUpdatePatient(updated);
+          }
+          setToastMessage(`✓ บันทึกแก้ไขข้อมูล ${updated.name} เรียบร้อยแล้ว`);
+          setTimeout(() => setToastMessage(null), 3500);
+          setEditTargetPatient(null);
+        }}
+        staffList={staffList}
+      />
     </div>
   );
 };

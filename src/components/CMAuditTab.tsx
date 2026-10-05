@@ -416,7 +416,7 @@ export const CMAuditTab: React.FC<CMAuditTabProps> = ({
                             {patient.name}
                           </div>
                           <div className="text-slate-500 text-[11px]">
-                            อายุ {patient.age} ปี • {formatVillageLabel(patient.villageNo, patient.villageName)}
+                            อายุ {patient.age} ปี • {formatVillageLabel(patient.villageNo, patient.villageName, patient.address)}
                           </div>
                         </div>
                       </div>

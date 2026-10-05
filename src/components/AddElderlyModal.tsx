@@ -65,7 +65,7 @@ export const AddElderlyModal: React.FC<AddElderlyModalProps> = ({
       gender: formData.gender,
       address: formData.address,
       villageNo: formData.villageNo,
-      villageName: getVillageNameByNumber(formData.villageNo, formData.villageName),
+      villageName: getVillageNameByNumber(formData.villageNo, formData.villageName, formData.address),
       ltcGroup: formData.ltcGroup,
       taiScore: formData.taiScore,
       adlScore: Number(formData.adlScore),

@@ -33,7 +33,7 @@ import {
   saveAllStaffToFirestore
 } from './services/firestoreService';
 import { testConnection } from './firebase';
-import { getVillageNameByNumber } from './utils/addressUtils';
+import { getVillageNameByNumber, resolvePatientVillage } from './utils/addressUtils';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('visit-log');
@@ -48,10 +48,14 @@ export default function App() {
   // Core Persistent State
   const [currentUser, setCurrentUser] = useState<CaregiverUser>(CURRENT_CAREGIVER);
   const [patients, setPatients] = useState<ElderlyPatient[]>(() => {
-    return INITIAL_ELDERLY_PATIENTS.map((p) => ({
-      ...p,
-      villageName: getVillageNameByNumber(p.villageNo, p.villageName),
-    }));
+    return INITIAL_ELDERLY_PATIENTS.map((p) => {
+      const resolved = resolvePatientVillage(p);
+      return {
+        ...p,
+        villageNo: resolved.no,
+        villageName: resolved.name,
+      };
+    });
   });
   const [visits, setVisits] = useState<VisitRecord[]>(INITIAL_VISITS);
 
@@ -87,10 +91,14 @@ export default function App() {
         unsubPatients = subscribePatients(
           (remotePatients) => {
             if (remotePatients && remotePatients.length > 0) {
-              const correctedPatients = remotePatients.map((p) => ({
-                ...p,
-                villageName: getVillageNameByNumber(p.villageNo, p.villageName),
-              }));
+              const correctedPatients = remotePatients.map((p) => {
+                const resolved = resolvePatientVillage(p);
+                return {
+                  ...p,
+                  villageNo: resolved.no,
+                  villageName: resolved.name,
+                };
+              });
               setPatients(correctedPatients);
               setTargetPatientIdForVisit((prev) => {
                 if (prev && correctedPatients.some((p) => p.id === prev)) return prev;
@@ -188,9 +196,11 @@ export default function App() {
   };
 
   const handleUpdatePatient = async (updatedPatient: ElderlyPatient) => {
+    const resolved = resolvePatientVillage(updatedPatient);
     const verifiedPatient: ElderlyPatient = {
       ...updatedPatient,
-      villageName: getVillageNameByNumber(updatedPatient.villageNo, updatedPatient.villageName),
+      villageNo: resolved.no,
+      villageName: resolved.name,
     };
     setPatients((prev) =>
       prev.map((p) => (p.id === verifiedPatient.id ? verifiedPatient : p))
@@ -203,9 +213,11 @@ export default function App() {
   };
 
   const handleAddPatient = async (newPatient: ElderlyPatient) => {
+    const resolved = resolvePatientVillage(newPatient);
     const verifiedPatient: ElderlyPatient = {
       ...newPatient,
-      villageName: getVillageNameByNumber(newPatient.villageNo, newPatient.villageName),
+      villageNo: resolved.no,
+      villageName: resolved.name,
     };
     setPatients((prev) => [verifiedPatient, ...prev]);
     setTargetPatientIdForVisit(verifiedPatient.id);
@@ -382,22 +394,62 @@ export default function App() {
 
     if (selectedStaff.id === 'cm-01' || selectedStaff.isAdmin) {
       setCurrentRole('admin');
+      setCurrentUser((prev) => ({
+        ...prev,
+        id: selectedStaff.id,
+        name: selectedStaff.name,
+        code: selectedStaff.code,
+        role: 'admin',
+        position: selectedStaff.position,
+        phone: selectedStaff.phone,
+        avatarUrl: selectedStaff.avatarUrl,
+      }));
       setActiveTab('admin-panel');
     } else {
       setCurrentRole(selectedStaff.role);
       if (selectedStaff.role === 'caregiver') {
-        setCurrentUser((prev) => ({
-          ...prev,
-          name: selectedStaff.name,
+        setCurrentUser({
+          id: selectedStaff.id,
           code: selectedStaff.code,
+          name: selectedStaff.name,
+          role: 'caregiver',
+          position: selectedStaff.position,
           phone: selectedStaff.phone,
+          hospital: selectedStaff.hospital,
+          subdistrict: 'ตำบลธาตุทอง',
+          district: 'อำเภอสว่างแดนดิน',
+          province: 'จังหวัดสกลนคร',
+          assignedVillage: selectedStaff.assignedVillage || selectedStaff.assignedArea || 'ตำบลธาตุทอง',
           avatarUrl: selectedStaff.avatarUrl,
-          assignedVillage: selectedStaff.assignedVillage || prev.assignedVillage,
-        }));
+          targetPatients: selectedStaff.targetPatients || 10,
+          totalVisitQuota: 28,
+          completedVisits: 0,
+          pendingVisits: 0,
+        });
         setActiveTab('visit-log');
       } else if (selectedStaff.role === 'care_manager') {
+        setCurrentUser((prev) => ({
+          ...prev,
+          id: selectedStaff.id,
+          name: selectedStaff.name,
+          code: selectedStaff.code,
+          role: 'care_manager',
+          position: selectedStaff.position,
+          phone: selectedStaff.phone,
+          avatarUrl: selectedStaff.avatarUrl,
+        }));
         setActiveTab('cm-audit');
       } else if (selectedStaff.role === 'director') {
+        setCurrentUser((prev) => ({
+          ...prev,
+          id: selectedStaff.id,
+          name: selectedStaff.name,
+          code: selectedStaff.code,
+          role: 'director',
+          position: selectedStaff.position,
+          phone: selectedStaff.phone,
+          avatarUrl: selectedStaff.avatarUrl,
+        }));
         setActiveTab('monthly-report');
       }
     }
@@ -418,17 +470,55 @@ export default function App() {
           setCurrentRole(role);
           if (role === 'admin') {
             const adminStaff = staffList.find((s) => s.id === 'cm-01') || staffList.find((s) => s.isAdmin);
-            if (adminStaff) setCurrentStaff(adminStaff);
+            if (adminStaff) {
+              setCurrentStaff(adminStaff);
+              setCurrentUser((prev) => ({
+                ...prev,
+                id: adminStaff.id,
+                name: adminStaff.name,
+                code: adminStaff.code,
+                role: 'admin',
+              }));
+            }
             setActiveTab('admin-panel');
           } else if (role === 'care_manager') {
             const cm = staffList.find((s) => s.role === 'care_manager');
-            if (cm) setCurrentStaff(cm);
+            if (cm) {
+              setCurrentStaff(cm);
+              setCurrentUser((prev) => ({
+                ...prev,
+                id: cm.id,
+                name: cm.name,
+                code: cm.code,
+                role: 'care_manager',
+              }));
+            }
             if (activeTab === 'admin-panel') {
               setActiveTab('cm-audit');
             }
           } else {
-            const cg = staffList.find((s) => s.role === 'caregiver');
-            if (cg) setCurrentStaff(cg);
+            const cg = staffList.find((s) => s.role === 'caregiver') || staffList[0];
+            if (cg) {
+              setCurrentStaff(cg);
+              setCurrentUser({
+                id: cg.id,
+                code: cg.code,
+                name: cg.name,
+                role: 'caregiver',
+                position: cg.position,
+                phone: cg.phone,
+                hospital: cg.hospital,
+                subdistrict: 'ตำบลธาตุทอง',
+                district: 'อำเภอสว่างแดนดิน',
+                province: 'จังหวัดสกลนคร',
+                assignedVillage: cg.assignedVillage || cg.assignedArea || 'ตำบลธาตุทอง',
+                avatarUrl: cg.avatarUrl,
+                targetPatients: cg.targetPatients || 10,
+                totalVisitQuota: 28,
+                completedVisits: 0,
+                pendingVisits: 0,
+              });
+            }
             // ถ้าเป็นสิทธิ์ CG และอยู่ในหน้า 3-8 ให้สลับกลับมาหน้า 1
             if (activeTab !== 'visit-log' && activeTab !== 'my-summary') {
               setActiveTab('visit-log');
@@ -446,6 +536,9 @@ export default function App() {
           <VisitLogTab
             patients={patients}
             currentUser={currentUser}
+            currentStaff={currentStaff}
+            staffList={staffList}
+            currentRole={currentRole}
             onSaveVisit={handleSaveVisit}
             onOpenBarthelModal={handleOpenBarthel}
             onOpenTaiModal={handleOpenTai}

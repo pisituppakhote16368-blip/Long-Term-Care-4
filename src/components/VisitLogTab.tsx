@@ -24,9 +24,10 @@ import {
   CalendarCheck,
   Check,
   RotateCcw,
-  AlertTriangle
+  AlertTriangle,
+  UserCog
 } from 'lucide-react';
-import { ElderlyPatient, VisitRecord, CaregiverUser } from '../types';
+import { ElderlyPatient, VisitRecord, CaregiverUser, StaffMember } from '../types';
 import { compressImageFile, handleImageFallback, DEFAULT_VISIT_PHOTO, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
 import { formatFullPatientAddress, formatVillageLabel } from '../utils/addressUtils';
 
@@ -64,6 +65,9 @@ const formatThaiDate = (dateStr: string) => {
 interface VisitLogTabProps {
   patients: ElderlyPatient[];
   currentUser: CaregiverUser;
+  currentStaff?: StaffMember;
+  staffList?: StaffMember[];
+  currentRole?: string;
   onSaveVisit: (visit: VisitRecord) => void;
   onOpenBarthelModal: (currentScore: number, onApply: (score: number) => void) => void;
   onOpenTaiModal: (onSelect: (tai: string) => void) => void;
@@ -74,63 +78,93 @@ interface VisitLogTabProps {
 export const VisitLogTab: React.FC<VisitLogTabProps> = ({
   patients,
   currentUser,
+  currentStaff,
+  staffList = [],
+  currentRole = 'caregiver',
   onSaveVisit,
   onOpenBarthelModal,
   onOpenTaiModal,
   onOpenAddElderly,
   initialSelectedPatientId,
 }) => {
-  // Filter patients by caregiver if current user is a caregiver
-  // แสดงเฉพาะคนไข้ของ CG คนนั้นที่ได้รับผิดชอบเท่านั้น
-  const availablePatients = useMemo(() => {
-    if (currentUser.role === 'caregiver') {
-      return patients.filter((p) => 
-        (Boolean(p.caregiverId) && p.caregiverId === currentUser.id) || 
-        (Boolean(p.caregiverName) && p.caregiverName === currentUser.name)
-      );
+  // เจ้าหน้าที่ CG ประจำมุมมองนี้ (หากล็อกอินหรือสลับสิทธิ์เป็น CG ให้ล็อคเป็น CG ท่านนั้นเสมอ)
+  const [selectedCgId, setSelectedCgId] = useState<string>(() => {
+    if (currentStaff?.role === 'caregiver') return currentStaff.id;
+    if (currentUser?.role === 'caregiver' && currentUser.id) return currentUser.id;
+    const firstCg = staffList.find((s) => s.role === 'caregiver');
+    return firstCg?.id || currentUser.id || 'cg-01';
+  });
+
+  // อัปเดต selectedCgId ให้ตรงกับผู้ใช้งานปัจจุบันเมื่อมีการสลับบัญชีหรือเปลี่ยนบทบาท
+  useEffect(() => {
+    if (currentRole === 'caregiver' || currentUser.role === 'caregiver') {
+      const activeId = currentStaff?.role === 'caregiver' ? currentStaff.id : currentUser.id;
+      if (activeId && activeId !== selectedCgId) {
+        setSelectedCgId(activeId);
+      }
     }
-    return patients;
-  }, [patients, currentUser]);
+  }, [currentRole, currentUser, currentStaff, selectedCgId]);
+
+  const activeCaregiver = useMemo(() => {
+    if (currentRole === 'caregiver' || currentUser.role === 'caregiver') {
+      if (currentStaff && currentStaff.role === 'caregiver') return currentStaff;
+      if (currentUser && currentUser.id) return currentUser;
+    }
+    const found = staffList.find((s) => s.id === selectedCgId);
+    if (found) return found;
+    if (currentStaff && currentStaff.role === 'caregiver') return currentStaff;
+    return currentUser;
+  }, [currentRole, currentUser, currentStaff, staffList, selectedCgId]);
+
+  // Filter patients: โชว์เฉพาะรายชื่อคนไข้ในความรับผิดชอบของ CG ท่านนั้นเท่านั้น
+  const availablePatients = useMemo(() => {
+    const targetCgId = (activeCaregiver.id || '').trim();
+    const targetCgName = (activeCaregiver.name || '').trim();
+
+    return patients.filter((p) => {
+      const pCgId = (p.caregiverId || '').trim();
+      const pCgName = (p.caregiverName || '').trim();
+
+      const matchId = Boolean(targetCgId) && Boolean(pCgId) && pCgId === targetCgId;
+      const matchName = Boolean(targetCgName) && Boolean(pCgName) && (
+        pCgName === targetCgName ||
+        pCgName.includes(targetCgName) ||
+        targetCgName.includes(pCgName)
+      );
+
+      return matchId || matchName;
+    });
+  }, [patients, activeCaregiver]);
 
   // Selected Patient - Starts EMPTY unless an initial ID was passed explicitly
   const [selectedPatientId, setSelectedPatientId] = useState<string>(() => {
     if (initialSelectedPatientId) {
-      if (currentUser.role === 'caregiver') {
-        const belongs = patients.some(
-          (p) => p.id === initialSelectedPatientId && 
-          ((p.caregiverId && p.caregiverId === currentUser.id) || (p.caregiverName && p.caregiverName === currentUser.name))
-        );
-        return belongs ? initialSelectedPatientId : '';
-      }
-      return initialSelectedPatientId;
+      const belongs = availablePatients.some((p) => p.id === initialSelectedPatientId);
+      return belongs ? initialSelectedPatientId : '';
     }
     return '';
   });
 
   useEffect(() => {
     if (initialSelectedPatientId) {
-      if (currentUser.role === 'caregiver') {
-        const belongs = availablePatients.some((p) => p.id === initialSelectedPatientId);
-        if (belongs) {
-          setSelectedPatientId(initialSelectedPatientId);
-        } else {
-          setSelectedPatientId('');
-        }
-      } else {
+      const belongs = availablePatients.some((p) => p.id === initialSelectedPatientId);
+      if (belongs) {
         setSelectedPatientId(initialSelectedPatientId);
+      } else {
+        setSelectedPatientId('');
       }
     }
-  }, [initialSelectedPatientId, currentUser, availablePatients]);
+  }, [initialSelectedPatientId, availablePatients]);
 
   // Reset selectedPatientId if user switches or patient doesn't belong to this CG
   useEffect(() => {
-    if (currentUser.role === 'caregiver' && selectedPatientId) {
+    if (selectedPatientId) {
       const exists = availablePatients.some((p) => p.id === selectedPatientId);
       if (!exists) {
         setSelectedPatientId('');
       }
     }
-  }, [currentUser, availablePatients, selectedPatientId]);
+  }, [availablePatients, selectedPatientId]);
 
   const selectedPatient = patients.find((p) => p.id === selectedPatientId) || null;
 
@@ -545,8 +579,8 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
       elderlyName: selectedPatient.name,
       elderlyAge: selectedPatient.age,
       elderlyGroup: selectedPatient.ltcGroup,
-      caregiverId: currentUser.id,
-      caregiverName: currentUser.name,
+      caregiverId: activeCaregiver.id || currentUser.id,
+      caregiverName: activeCaregiver.name || currentUser.name,
       visitDate: visitDate,
       visitTime: visitTime,
       weight: parseFloat(weight) || 0,
@@ -613,7 +647,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
               </span>
             </div>
             <div className="text-[11px] text-slate-500 truncate max-w-[260px] sm:max-w-none">
-              วันเยี่ยม: {visitDate || 'ระบุวันที่'} {visitTime ? `${visitTime} น.` : ''} • {selectedPatient ? formatVillageLabel(selectedPatient.villageNo, selectedPatient.villageName) : 'ต.ธาตุทอง'} • รหัส CG: {currentUser.code}
+              วันเยี่ยม: {visitDate || 'ระบุวันที่'} {visitTime ? `${visitTime} น.` : ''} • {selectedPatient ? formatVillageLabel(selectedPatient.villageNo, selectedPatient.villageName, selectedPatient.address) : 'ต.ธาตุทอง'} • CG: {activeCaregiver.name} ({activeCaregiver.code || activeCaregiver.id})
             </div>
           </div>
         </div>
@@ -729,6 +763,44 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
               <label className="block text-xs font-bold text-slate-700 mb-1.5 font-['Prompt',sans-serif]">
                 เลือกผู้สูงอายุ / ผู้มีภาวะพึ่งพิงที่ต้องการบันทึกการออกเยี่ยม:
               </label>
+
+              {/* กรณีเป็นสิทธิ์ CM หรือ Admin ให้มีเมนูเลือก CG ที่ต้องการลงบันทึก/ตรวจสอบ เพื่อกรองคนไข้ได้ทันที */}
+              {currentRole !== 'caregiver' && currentUser.role !== 'caregiver' && staffList.length > 0 && (
+                <div className="mb-3 p-2.5 bg-teal-50/70 border border-teal-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-teal-900 flex items-center gap-1.5 font-['Prompt',sans-serif]">
+                    <UserCog className="w-4 h-4 text-teal-700" />
+                    <span>เลือกเจ้าหน้าที่ CG ผู้ดูแล (เพื่อแสดงเฉพาะคนไข้ที่รับผิดชอบ):</span>
+                  </span>
+                  <select
+                    value={selectedCgId}
+                    onChange={(e) => {
+                      setSelectedCgId(e.target.value);
+                      setSelectedPatientId('');
+                    }}
+                    className="px-2.5 py-1.5 bg-white border border-teal-300 rounded-lg font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    {staffList.filter((s) => s.role === 'caregiver').map((cg) => (
+                      <option key={cg.id} value={cg.id}>
+                        {cg.name} ({cg.code}) - {cg.assignedVillage || cg.assignedArea || 'รพ.สต.ธาตุทอง'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* ป้ายแสดงข้อมูล CG ผู้รับผิดชอบและจำนวนคนไข้ */}
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="text-slate-600 font-medium flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                  <span>ผู้ดูแล (CG):</span>
+                  <strong className="text-teal-900 font-bold">{activeCaregiver.name}</strong>
+                  <span className="text-slate-500">({activeCaregiver.code || 'CG'})</span>
+                </span>
+                <span className="text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 font-semibold text-[11px]">
+                  คนไข้ในความรับผิดชอบ: {availablePatients.length} ราย
+                </span>
+              </div>
+
               <div className="flex items-center gap-2">
                 <select
                   value={selectedPatientId}
@@ -741,12 +813,12 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                 >
                   <option value="">
                     {availablePatients.length === 0
-                      ? `-- ไม่พบรายชื่อคนไข้ในความรับผิดชอบของ CG ${currentUser.name} --`
+                      ? `-- ไม่พบรายชื่อคนไข้ในความรับผิดชอบของ CG ${activeCaregiver.name} --`
                       : `-- กรุณาเลือกคนไข้ในความรับผิดชอบของคุณ (${availablePatients.length} ราย) --`}
                   </option>
                   {availablePatients.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.age} ปี) - กลุ่ม {p.ltcGroup} | {formatVillageLabel(p.villageNo, p.villageName)}
+                      {p.name} ({p.age} ปี) - กลุ่ม {p.ltcGroup} | {formatVillageLabel(p.villageNo, p.villageName, p.address)}
                     </option>
                   ))}
                 </select>
@@ -760,14 +832,16 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                   <span className="hidden sm:inline">+ เพิ่มผู้สูงอายุใหม่</span>
                 </button>
               </div>
-              {availablePatients.length === 0 && currentUser.role === 'caregiver' && (
+
+              {availablePatients.length === 0 && (
                 <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
-                  <span>⚠️ ยังไม่พบคนไข้ในความรับผิดชอบของท่าน สามารถกดปุ่ม <strong>"+ เพิ่มผู้สูงอายุใหม่"</strong> เพื่อลงทะเบียนคนไข้เข้าสู่ความดูแลของท่านได้ทันที</span>
+                  <span>⚠️ ยังไม่พบคนไข้ในความรับผิดชอบของ <strong>CG {activeCaregiver.name}</strong> สามารถกดปุ่ม <strong>"+ เพิ่มผู้สูงอายุใหม่"</strong> เพื่อลงทะเบียนคนไข้เข้าสู่ความดูแลของท่านได้ทันที</span>
                 </div>
               )}
+
               {!selectedPatientId ? (
                 <span className="text-[11px] text-rose-600 font-bold block mt-1.5 flex items-center gap-1">
-                  * กรุณาเลือกคนไข้ที่ต้องการบันทึกการออกเยี่ยม (ระบบแสดงเฉพาะคนไข้ที่ CG {currentUser.name} ได้รับผิดชอบเท่านั้น)
+                  * กรุณาเลือกคนไข้ที่ต้องการบันทึกการออกเยี่ยม (ระบบแสดงเฉพาะคนไข้ที่ CG {activeCaregiver.name} ได้รับผิดชอบเท่านั้น)
                 </span>
               ) : (
                 <div className="flex items-center gap-2 mt-1.5">
