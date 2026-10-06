@@ -117,11 +117,26 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
   }, [currentRole, currentUser, currentStaff, staffList, selectedCgId]);
 
   // Filter patients: โชว์เฉพาะรายชื่อคนไข้ในความรับผิดชอบของ CG ท่านนั้นเท่านั้น
+  // และไม่รวมผู้ป่วยที่จำหน่าย หรือแจ้งตาย (discharged / deceased) ตามคำขอ
   const availablePatients = useMemo(() => {
     const targetCgId = (activeCaregiver.id || '').trim();
     const targetCgName = (activeCaregiver.name || '').trim();
 
     return patients.filter((p) => {
+      // 1. ตรวจสอบสถานะการจำหน่ายหรือแจ้งตาย/เสียชีวิต
+      const rawStatus = (p.status || 'active').toLowerCase().trim();
+      if (
+        rawStatus === 'discharged' ||
+        rawStatus === 'deceased' ||
+        rawStatus === 'จำหน่าย' ||
+        rawStatus === 'เสียชีวิต' ||
+        rawStatus === 'แจ้งตาย' ||
+        rawStatus === 'ตาย'
+      ) {
+        return false;
+      }
+
+      // 2. ตรวจสอบว่าตรงกับ CG ที่รับผิดชอบหรือไม่
       const pCgId = (p.caregiverId || '').trim();
       const pCgName = (p.caregiverName || '').trim();
 
@@ -166,7 +181,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
     }
   }, [availablePatients, selectedPatientId]);
 
-  const selectedPatient = patients.find((p) => p.id === selectedPatientId) || null;
+  const selectedPatient = availablePatients.find((p) => p.id === selectedPatientId) || null;
 
   // Visit Date & Time - Starts EMPTY (เอาค่าที่ขึ้นอยู่ออก ให้ CG ลงข้อมูลจริง)
   const [visitDate, setVisitDate] = useState<string>('');
@@ -797,7 +812,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                   <span className="text-slate-500">({activeCaregiver.code || 'CG'})</span>
                 </span>
                 <span className="text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 font-semibold text-[11px]">
-                  คนไข้ในความรับผิดชอบ: {availablePatients.length} ราย
+                  คนไข้ในความรับผิดชอบ (สถานะปกติ): {availablePatients.length} ราย
                 </span>
               </div>
 
@@ -813,7 +828,7 @@ export const VisitLogTab: React.FC<VisitLogTabProps> = ({
                 >
                   <option value="">
                     {availablePatients.length === 0
-                      ? `-- ไม่พบรายชื่อคนไข้ในความรับผิดชอบของ CG ${activeCaregiver.name} --`
+                      ? `-- ไม่พบรายชื่อคนไข้ในความรับผิดชอบของ CG ${activeCaregiver.name} (หรืออาจจำหน่าย/แจ้งตายแล้ว) --`
                       : `-- กรุณาเลือกคนไข้ในความรับผิดชอบของคุณ (${availablePatients.length} ราย) --`}
                   </option>
                   {availablePatients.map((p) => (

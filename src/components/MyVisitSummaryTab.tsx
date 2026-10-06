@@ -71,13 +71,30 @@ export const MyVisitSummaryTab: React.FC<MyVisitSummaryTabProps> = ({
     const cgId = (currentUser.id || '').trim();
     const cgName = (currentUser.name || '').trim();
     return patients.filter((p) => {
+      const st = (p.status || 'active').toLowerCase().trim();
+      if (
+        st === 'discharged' ||
+        st === 'deceased' ||
+        st === 'จำหน่าย' ||
+        st === 'เสียชีวิต' ||
+        st === 'แจ้งตาย' ||
+        st === 'ตาย'
+      ) {
+        return false;
+      }
       const pId = (p.caregiverId || '').trim();
       const pName = (p.caregiverName || '').trim();
       return (Boolean(cgId) && pId === cgId) || (Boolean(cgName) && (pName === cgName || pName.includes(cgName) || cgName.includes(pName)));
     });
   }, [patients, currentUser]);
 
-  const displayedPatients = currentUser.role === 'caregiver' ? cgPatients : (cgPatients.length > 0 ? cgPatients : patients);
+  const displayedPatients = useMemo(() => {
+    const base = currentUser.role === 'caregiver' ? cgPatients : (cgPatients.length > 0 ? cgPatients : patients);
+    return base.filter((p) => {
+      const st = (p.status || 'active').toLowerCase().trim();
+      return st !== 'discharged' && st !== 'deceased' && st !== 'จำหน่าย' && st !== 'เสียชีวิต' && st !== 'แจ้งตาย' && st !== 'ตาย';
+    });
+  }, [currentUser.role, cgPatients, patients]);
 
   const totalTargetVisits = displayedPatients.reduce((sum, p) => sum + p.targetVisitsPerMonth, 0);
   const totalCompletedVisits = displayedPatients.reduce((sum, p) => sum + p.visitsThisMonth, 0);
