@@ -28,12 +28,15 @@ import {
   Trash2,
   Camera,
   Save,
-  Pencil
+  Pencil,
+  ArrowUpDown,
+  Layers,
+  Home
 } from 'lucide-react';
 import { ElderlyPatient, LTCGroup, FISCAL_YEARS_LIST, StaffMember } from '../types';
 import { INITIAL_STAFF_MEMBERS } from '../data/mockData';
 import { compressImageFile, handleImageFallback, DEFAULT_PATIENT_AVATAR } from '../utils/imageUtils';
-import { formatVillageLabel, getVillageNameByNumber } from '../utils/addressUtils';
+import { formatVillageLabel, getVillageNameByNumber, resolvePatientVillage, THAT_THONG_VILLAGES_LIST, VillageInfo } from '../utils/addressUtils';
 import { EditElderlyModal } from './EditElderlyModal';
 
 interface ElderlyRegistryTabProps {
@@ -55,12 +58,16 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
   onUpdatePatient,
   onDeletePatient,
 }) => {
+  const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVillage, setSelectedVillage] = useState('all');
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const [selectedCaregiverFilter, setSelectedCaregiverFilter] = useState<string>('all');
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('2569');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'active' | 'discharged' | 'deceased'>('all');
+  const [sortBy, setSortBy] = useState<'village' | 'group' | 'name' | 'age'>('village');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [groupByVillageView, setGroupByVillageView] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Edit Patient Modal State
@@ -90,9 +97,22 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
   const [deceasedReason, setDeceasedReason] = useState('เสียชีวิตอย่างสงบด้วยโรคชราภาพที่บ้าน');
   const [deceasedNote, setDeceasedNote] = useState('');
 
-  // Filtered patients by fiscal year, status, search, village, group, caregiver
+  // Search Handlers
+  const handleTriggerSearch = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSearchTerm(searchInput.trim());
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput('');
+    setSearchTerm('');
+  };
+
+  // Filtered and sorted patients
   const filteredPatients = useMemo(() => {
-    return patients.filter((p) => {
+    const query = (searchTerm || searchInput).trim().toLowerCase();
+
+    const list = patients.filter((p) => {
       // Fiscal year
       const patientYear = p.fiscalYear || '2569';
       const matchYear = selectedFiscalYear === 'all' || patientYear === selectedFiscalYear;
@@ -102,18 +122,24 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
       const matchStatus = selectedStatusFilter === 'all' || patientStatus === selectedStatusFilter;
 
       // Search
+      const resolvedVillage = resolvePatientVillage(p);
       const matchSearch =
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.citizenId.includes(searchTerm) ||
-        p.address.includes(searchTerm) ||
-        (p.chronicDiseases && p.chronicDiseases.some(d => d.toLowerCase().includes(searchTerm.toLowerCase()))) ||
-        p.caregiverName.toLowerCase().includes(searchTerm.toLowerCase());
+        !query ||
+        p.name.toLowerCase().includes(query) ||
+        p.citizenId.includes(query) ||
+        p.phone.includes(query) ||
+        p.address.toLowerCase().includes(query) ||
+        resolvedVillage.fullName.toLowerCase().includes(query) ||
+        resolvedVillage.name.toLowerCase().includes(query) ||
+        (p.chronicDiseases && p.chronicDiseases.some((d) => d.toLowerCase().includes(query))) ||
+        p.caregiverName.toLowerCase().includes(query);
 
       // Village
       const matchVillage =
         selectedVillage === 'all' ||
+        resolvedVillage.no === selectedVillage ||
         p.villageNo === selectedVillage ||
-        formatVillageLabel(p.villageNo, p.villageName, p.address).startsWith(selectedVillage);
+        resolvedVillage.name.includes(selectedVillage);
 
       // Group
       const matchGroup =
@@ -121,26 +147,86 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
         (selectedGroup === 'society' ? p.adlScore >= 12 : p.ltcGroup.toString() === selectedGroup);
 
       // Caregiver filter
-      const matchCaregiver = selectedCaregiverFilter === 'all' || p.caregiverId === selectedCaregiverFilter || p.caregiverName === selectedCaregiverFilter;
+      const matchCaregiver =
+        selectedCaregiverFilter === 'all' ||
+        p.caregiverId === selectedCaregiverFilter ||
+        p.caregiverName === selectedCaregiverFilter;
 
       return matchYear && matchStatus && matchSearch && matchVillage && matchGroup && matchCaregiver;
     });
-  }, [patients, selectedFiscalYear, selectedStatusFilter, searchTerm, selectedVillage, selectedGroup, selectedCaregiverFilter]);
+
+    // Sort patients (Default is by village number 1-8)
+    return list.sort((a, b) => {
+      if (sortBy === 'village') {
+        const vA = resolvePatientVillage(a).num;
+        const vB = resolvePatientVillage(b).num;
+        if (vA !== vB) {
+          return sortOrder === 'asc' ? vA - vB : vB - vA;
+        }
+        return a.name.localeCompare(b.name, 'th');
+      }
+      if (sortBy === 'group') {
+        const diff = a.ltcGroup - b.ltcGroup;
+        if (diff !== 0) return sortOrder === 'asc' ? diff : -diff;
+        return a.adlScore - b.adlScore;
+      }
+      if (sortBy === 'name') {
+        return sortOrder === 'asc' ? a.name.localeCompare(b.name, 'th') : b.name.localeCompare(a.name, 'th');
+      }
+      if (sortBy === 'age') {
+        return sortOrder === 'asc' ? a.age - b.age : b.age - a.age;
+      }
+      return 0;
+    });
+  }, [patients, selectedFiscalYear, selectedStatusFilter, searchTerm, searchInput, selectedVillage, selectedGroup, selectedCaregiverFilter, sortBy, sortOrder]);
 
   // Statistics for current fiscal year
   const fiscalYearPatients = useMemo(() => {
-    return patients.filter(p => selectedFiscalYear === 'all' || (p.fiscalYear || '2569') === selectedFiscalYear);
+    return patients.filter((p) => selectedFiscalYear === 'all' || (p.fiscalYear || '2569') === selectedFiscalYear);
   }, [patients, selectedFiscalYear]);
 
   const totalInYear = fiscalYearPatients.length;
-  const activeCount = fiscalYearPatients.filter(p => (p.status || 'active') === 'active').length;
-  const dischargedCount = fiscalYearPatients.filter(p => p.status === 'discharged').length;
-  const deceasedCount = fiscalYearPatients.filter(p => p.status === 'deceased').length;
+  const activeCount = fiscalYearPatients.filter((p) => (p.status || 'active') === 'active').length;
+  const dischargedCount = fiscalYearPatients.filter((p) => p.status === 'discharged').length;
+  const deceasedCount = fiscalYearPatients.filter((p) => p.status === 'deceased').length;
 
-  const group1Count = fiscalYearPatients.filter(p => (p.status || 'active') === 'active' && p.ltcGroup === 1).length;
-  const group2Count = fiscalYearPatients.filter(p => (p.status || 'active') === 'active' && p.ltcGroup === 2).length;
-  const group3Count = fiscalYearPatients.filter(p => (p.status || 'active') === 'active' && p.ltcGroup === 3).length;
-  const group4Count = fiscalYearPatients.filter(p => (p.status || 'active') === 'active' && p.ltcGroup === 4).length;
+  const group1Count = fiscalYearPatients.filter((p) => (p.status || 'active') === 'active' && p.ltcGroup === 1).length;
+  const group2Count = fiscalYearPatients.filter((p) => (p.status || 'active') === 'active' && p.ltcGroup === 2).length;
+  const group3Count = fiscalYearPatients.filter((p) => (p.status || 'active') === 'active' && p.ltcGroup === 3).length;
+  const group4Count = fiscalYearPatients.filter((p) => (p.status || 'active') === 'active' && p.ltcGroup === 4).length;
+  const societyCount = fiscalYearPatients.filter((p) => (p.status || 'active') === 'active' && p.adlScore >= 12).length;
+
+  // Counts by Village for current fiscal year
+  const villageCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    THAT_THONG_VILLAGES_LIST.forEach((v) => {
+      counts[v.no] = 0;
+    });
+    fiscalYearPatients.forEach((p) => {
+      const v = resolvePatientVillage(p);
+      if (counts[v.no] !== undefined) {
+        counts[v.no]++;
+      } else {
+        counts[v.no] = (counts[v.no] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [fiscalYearPatients]);
+
+  // Grouped patients by village for sectioned table view
+  const groupedPatientsByVillage = useMemo(() => {
+    if (!groupByVillageView || selectedVillage !== 'all' || sortBy !== 'village') {
+      return null;
+    }
+    const result: { village: VillageInfo; list: ElderlyPatient[] }[] = [];
+    THAT_THONG_VILLAGES_LIST.forEach((v) => {
+      const matched = filteredPatients.filter((p) => resolvePatientVillage(p).num === v.num);
+      if (matched.length > 0) {
+        result.push({ village: v, list: matched });
+      }
+    });
+    return result;
+  }, [groupByVillageView, selectedVillage, sortBy, filteredPatients]);
 
   // Handle Discharge Submit
   const handleConfirmDischarge = (e: React.FormEvent) => {
@@ -476,61 +562,284 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
           </div>
         </div>
 
-        {/* Search and Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs pt-1">
-          {/* Search text input */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="ค้นหาชื่อ, เลขบัตร, หมู่บ้าน, โรค..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none text-slate-800"
-            />
+        {/* 1. ปุ่มแยกตามกลุ่ม (LTC Group Filter Buttons) */}
+        <div className="space-y-1.5 pt-1">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 font-['Prompt',sans-serif]">
+              <HeartPulse className="w-4 h-4 text-teal-700" />
+              <span>ปุ่มแยกตามกลุ่ม (LTC Group / ติดสังคม):</span>
+            </span>
+            {selectedGroup !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setSelectedGroup('all')}
+                className="text-[11px] text-teal-700 hover:text-teal-900 font-bold underline cursor-pointer"
+              >
+                แสดงทุกกลุ่ม
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedGroup('all')}
+              className={`p-2.5 rounded-xl text-xs font-bold transition-all text-left flex flex-col justify-between cursor-pointer border ${
+                selectedGroup === 'all'
+                  ? 'bg-slate-900 text-white border-slate-900 shadow-sm ring-2 ring-slate-300'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <span className="text-[10px] opacity-80">ทั้งหมด</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="font-bold">ทุกกลุ่ม</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  selectedGroup === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                }`}>
+                  {totalInYear}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedGroup('1')}
+              className={`p-2.5 rounded-xl text-xs font-bold transition-all text-left flex flex-col justify-between cursor-pointer border ${
+                selectedGroup === '1'
+                  ? 'bg-teal-700 text-white border-teal-700 shadow-sm ring-2 ring-teal-300'
+                  : 'bg-teal-50/50 text-teal-900 border-teal-200 hover:bg-teal-100/60'
+              }`}
+            >
+              <span className="text-[10px] text-teal-800 font-normal">กลุ่มติดบ้าน</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="font-bold">กลุ่ม 1</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  selectedGroup === '1' ? 'bg-white/20 text-white' : 'bg-teal-200/80 text-teal-900'
+                }`}>
+                  {group1Count}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedGroup('2')}
+              className={`p-2.5 rounded-xl text-xs font-bold transition-all text-left flex flex-col justify-between cursor-pointer border ${
+                selectedGroup === '2'
+                  ? 'bg-sky-700 text-white border-sky-700 shadow-sm ring-2 ring-sky-300'
+                  : 'bg-sky-50/50 text-sky-900 border-sky-200 hover:bg-sky-100/60'
+              }`}
+            >
+              <span className="text-[10px] text-sky-800 font-normal">ติดบ้าน-สับสน/สมองเสื่อม</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="font-bold">กลุ่ม 2</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  selectedGroup === '2' ? 'bg-white/20 text-white' : 'bg-sky-200/80 text-sky-900'
+                }`}>
+                  {group2Count}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedGroup('3')}
+              className={`p-2.5 rounded-xl text-xs font-bold transition-all text-left flex flex-col justify-between cursor-pointer border ${
+                selectedGroup === '3'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300'
+                  : 'bg-amber-50/50 text-amber-900 border-amber-200 hover:bg-amber-100/60'
+              }`}
+            >
+              <span className="text-[10px] text-amber-800 font-normal">กลุ่มติดเตียง</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="font-bold">กลุ่ม 3</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  selectedGroup === '3' ? 'bg-white/20 text-white' : 'bg-amber-200/80 text-amber-900'
+                }`}>
+                  {group3Count}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedGroup('4')}
+              className={`p-2.5 rounded-xl text-xs font-bold transition-all text-left flex flex-col justify-between cursor-pointer border ${
+                selectedGroup === '4'
+                  ? 'bg-rose-700 text-white border-rose-700 shadow-sm ring-2 ring-rose-300'
+                  : 'bg-rose-50/50 text-rose-900 border-rose-200 hover:bg-rose-100/60'
+              }`}
+            >
+              <span className="text-[10px] text-rose-800 font-normal">ติดเตียงระยะท้าย</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="font-bold">กลุ่ม 4</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  selectedGroup === '4' ? 'bg-white/20 text-white' : 'bg-rose-200/80 text-rose-900'
+                }`}>
+                  {group4Count}
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedGroup('society')}
+              className={`p-2.5 rounded-xl text-xs font-bold transition-all text-left flex flex-col justify-between cursor-pointer border ${
+                selectedGroup === 'society'
+                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-300'
+                  : 'bg-emerald-50/50 text-emerald-900 border-emerald-200 hover:bg-emerald-100/60'
+              }`}
+            >
+              <span className="text-[10px] text-emerald-800 font-normal">ADL 12-20</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="font-bold">ติดสังคม</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  selectedGroup === 'society' ? 'bg-white/20 text-white' : 'bg-emerald-200/80 text-emerald-900'
+                }`}>
+                  {societyCount}
+                </span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. จัดเรียงเป็นหมู่ (Sort Controls & Village Quick Tabs ม.1 - ม.8) */}
+        <div className="space-y-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 font-['Prompt',sans-serif]">
+                <Home className="w-4 h-4 text-teal-700" />
+                <span>จัดเรียงตามหมู่บ้าน (ตำบลธาตุทอง 8 หมู่):</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setGroupByVillageView(!groupByVillageView)}
+                className={`px-2.5 py-1 text-[11px] rounded-lg font-semibold flex items-center gap-1 transition-colors cursor-pointer border ${
+                  groupByVillageView
+                    ? 'bg-teal-100 text-teal-900 border-teal-300 shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                }`}
+                title="สลับการแสดงผลแบบแบ่งส่วนแยกตามหมู่บ้าน"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>{groupByVillageView ? 'แยกแถวตามหมู่ (เปิด)' : 'แสดงรวมต่อเนื่อง'}</span>
+              </button>
+            </div>
+
+            {/* Sort Selector */}
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-slate-500 font-medium flex items-center gap-1">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                <span>เรียงตาม:</span>
+              </span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-slate-700 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-teal-500 cursor-pointer"
+              >
+                <option value="village">🏡 หมู่บ้าน (ม.1 - ม.8)</option>
+                <option value="group">🩺 กลุ่ม LTC (1 - 4)</option>
+                <option value="name">🔤 ชื่อผู้สูงอายุ (ก - ฮ)</option>
+                <option value="age">🎂 อายุ</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-xs cursor-pointer border border-slate-200"
+                title="สลับทิศทางการเรียงลำดับ"
+              >
+                {sortOrder === 'asc' ? '↑ น้อยไปมาก' : '↓ มากไปน้อย'}
+              </button>
+            </div>
           </div>
 
-          {/* Village Filter */}
-          <div>
-            <select
-              value={selectedVillage}
-              onChange={(e) => setSelectedVillage(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-slate-700 focus:ring-2 focus:ring-teal-500"
+          {/* Quick Village Pill Buttons (ม.1 - ม.8) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+            <button
+              type="button"
+              onClick={() => setSelectedVillage('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer shrink-0 border ${
+                selectedVillage === 'all'
+                  ? 'bg-teal-800 text-white border-teal-800 shadow-2xs'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
             >
-              <option value="all">ทุกหมู่บ้าน (ม.1 - ม.8)</option>
-              <option value="ม.1">ม.1 บ้านธาตุทอง</option>
-              <option value="ม.2">ม.2 บ้านหินโงม</option>
-              <option value="ม.3">ม.3 บ้านโนนสร้างไพ</option>
-              <option value="ม.4">ม.4 บ้านหนองหอย</option>
-              <option value="ม.5">ม.5 บ้านคันชา</option>
-              <option value="ม.6">ม.6 บ้านโคกหลวง</option>
-              <option value="ม.7">ม.7 บ้านเดิด</option>
-              <option value="ม.8">ม.8 บ้านเดื่อ</option>
-            </select>
+              ทุกหมู่บ้าน ({totalInYear})
+            </button>
+            {THAT_THONG_VILLAGES_LIST.map((v) => {
+              const count = villageCounts[v.no] || 0;
+              const isSelected = selectedVillage === v.no;
+              return (
+                <button
+                  key={v.no}
+                  type="button"
+                  onClick={() => setSelectedVillage(isSelected ? 'all' : v.no)}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 border flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-teal-700 text-white border-teal-700 shadow-2xs ring-2 ring-teal-200'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-teal-50 hover:border-teal-300'
+                  }`}
+                >
+                  <span>{v.no} {v.name}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          {/* Group Filter */}
-          <div>
-            <select
-              value={selectedGroup}
-              onChange={(e) => setSelectedGroup(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl text-slate-700 focus:ring-2 focus:ring-teal-500 font-medium"
+        {/* 3. ช่องค้นหาพร้อมปุ่มค้นหา และตัวกรองผู้ดูแล (Search Bar with Dedicated Button) */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 border-t border-slate-100">
+          <form
+            onSubmit={handleTriggerSearch}
+            className="flex-1 flex items-center gap-1.5"
+          >
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="ค้นหาชื่อ, นามสกุล, เลขบัตร 13 หลัก, บ้านเลขที่, โรคประจำตัว, ชื่อ CG..."
+                value={searchInput}
+                onChange={(e) => {
+                  setSearchInput(e.target.value);
+                  if (!e.target.value) {
+                    setSearchTerm('');
+                  }
+                }}
+                className="w-full pl-9 pr-8 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none text-slate-800 text-xs"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  title="ล้างคำค้นหา"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* ปุ่มสำหรับค้นหา (เพิ่มตามคำขอ) */}
+            <button
+              type="submit"
+              className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs shrink-0"
+              title="กดค้นหารายชื่อผู้สูงอายุ"
             >
-              <option value="all">ทุกกลุ่ม LTC / ADL</option>
-              <option value="1">• กลุ่มที่ 1 (กลุ่มติดบ้าน): เคลื่อนไหวได้บ้าง มีปัญหาการกินหรือการขับถ่าย แต่ไม่มีภาวะสับสนทางสมอง ADL 5-11</option>
-              <option value="2">• กลุ่มที่ 2 (กลุ่มติดบ้านที่มีภาวะสับสน): เคลื่อนไหวได้บ้าง มีภาวะสับสน (เช่น สมองเสื่อมหรือจิตเวช) และอาจมีปัญหาการกินหรือการขับถ่าย ADL 5-11</option>
-              <option value="3">• กลุ่มที่ 3 (กลุ่มติดเตียง): เคลื่อนไหวเองไม่ได้ ไม่มีปัญหาการกิน/การขับถ่ายที่รุนแรง หรือมีอาการเจ็บป่วยร่วม ADL 0-4</option>
-              <option value="4">• กลุ่มที่ 4 (กลุ่มติดเตียงระยะสุดท้าย): เคลื่อนไหวเองไม่ได้ มีอาการเจ็บป่วยรุนแรง หรืออยู่ในระยะประคับประคองท้ายของชีวิต ADL 0-4</option>
-              <option value="society">• กลุ่มติดสังคม ADL 12-20</option>
-            </select>
-          </div>
+              <Search className="w-3.5 h-3.5" />
+              <span>ค้นหา</span>
+            </button>
+          </form>
 
           {/* Caregiver Filter */}
-          <div>
+          <div className="sm:w-64">
             <select
               value={selectedCaregiverFilter}
               onChange={(e) => setSelectedCaregiverFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-teal-300 bg-teal-50/40 rounded-xl text-teal-900 font-semibold focus:ring-2 focus:ring-teal-500"
+              className="w-full px-3 py-2 border border-teal-300 bg-teal-50/40 rounded-xl text-teal-900 font-semibold focus:ring-2 focus:ring-teal-500 text-xs cursor-pointer"
             >
               <option value="all">ผู้ดูแลรับผิดชอบ: ทั้งหมด</option>
               {cgStaffList.map((cg) => {
@@ -544,6 +853,59 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
             </select>
           </div>
         </div>
+
+        {/* Active Filter Chips Bar */}
+        {(searchTerm || searchInput || selectedGroup !== 'all' || selectedVillage !== 'all' || selectedCaregiverFilter !== 'all') && (
+          <div className="flex items-center justify-between flex-wrap gap-2 text-xs p-2.5 bg-teal-50/70 border border-teal-200 rounded-xl">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-bold text-teal-950">ตัวกรองที่ใช้งาน:</span>
+              {(searchTerm || searchInput) && (
+                <span className="inline-flex items-center gap-1 bg-white border border-teal-300 text-teal-900 px-2 py-0.5 rounded-lg text-[11px] font-semibold">
+                  ค้นหา: "{searchTerm || searchInput}"
+                  <button type="button" onClick={handleClearSearch} className="hover:text-rose-600">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {selectedGroup !== 'all' && (
+                <span className="inline-flex items-center gap-1 bg-white border border-teal-300 text-teal-900 px-2 py-0.5 rounded-lg text-[11px] font-semibold">
+                  กลุ่ม: {selectedGroup === 'society' ? 'ติดสังคม' : `กลุ่ม ${selectedGroup}`}
+                  <button type="button" onClick={() => setSelectedGroup('all')} className="hover:text-rose-600">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {selectedVillage !== 'all' && (
+                <span className="inline-flex items-center gap-1 bg-white border border-teal-300 text-teal-900 px-2 py-0.5 rounded-lg text-[11px] font-semibold">
+                  หมู่บ้าน: {selectedVillage}
+                  <button type="button" onClick={() => setSelectedVillage('all')} className="hover:text-rose-600">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {selectedCaregiverFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 bg-white border border-teal-300 text-teal-900 px-2 py-0.5 rounded-lg text-[11px] font-semibold">
+                  ผู้ดูแล: {cgStaffList.find(c => c.id === selectedCaregiverFilter)?.name || selectedCaregiverFilter}
+                  <button type="button" onClick={() => setSelectedCaregiverFilter('all')} className="hover:text-rose-600">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                handleClearSearch();
+                setSelectedGroup('all');
+                setSelectedVillage('all');
+                setSelectedCaregiverFilter('all');
+              }}
+              className="text-xs text-rose-700 hover:text-rose-900 font-bold underline cursor-pointer"
+            >
+              ล้างตัวกรองทั้งหมด
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Elderly Registry Table */}
@@ -573,13 +935,31 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
           </div>
         </div>
 
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-800">
-            แสดงรายชื่อผู้สูงอายุ ({filteredPatients.length} รายการ)
-          </span>
-          <span className="text-[11px] text-slate-400">
-            ปีงบประมาณ {selectedFiscalYear === 'all' ? 'ทั้งหมด' : selectedFiscalYear} • รพ.สต.ธาตุทอง
-          </span>
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-800">
+              แสดงรายชื่อผู้สูงอายุ ({filteredPatients.length} รายการ)
+            </span>
+            {selectedVillage !== 'all' && (
+              <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
+                {THAT_THONG_VILLAGES_LIST.find((v) => v.no === selectedVillage)?.fullName || selectedVillage}
+              </span>
+            )}
+            {selectedGroup !== 'all' && (
+              <span className="text-[11px] font-semibold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
+                {selectedGroup === 'society' ? 'กลุ่มติดสังคม (ADL ≥ 12)' : `กลุ่มที่ ${selectedGroup}`}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
+            <span>
+              จัดเรียง: <strong className="text-teal-900">{sortBy === 'village' ? 'ตามหมู่บ้าน (ม.1 - ม.8)' : sortBy === 'group' ? 'กลุ่ม LTC' : sortBy === 'name' ? 'ชื่อ (ก-ฮ)' : 'อายุ'}</strong>
+            </span>
+            <span>•</span>
+            <span>
+              ปีงบ {selectedFiscalYear === 'all' ? 'ทั้งหมด' : selectedFiscalYear} • รพ.สต.ธาตุทอง
+            </span>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -627,10 +1007,45 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredPatients.map((patient) => {
+                filteredPatients.map((patient, index) => {
                   const status = patient.status || 'active';
+                  const vInfo = resolvePatientVillage(patient);
+                  const showVillageHeader = groupByVillageView && selectedVillage === 'all' && sortBy === 'village' && (
+                    index === 0 || resolvePatientVillage(filteredPatients[index - 1]).num !== vInfo.num
+                  );
+                  const countInThisVillage = filteredPatients.filter(p => resolvePatientVillage(p).num === vInfo.num).length;
+
                   return (
-                    <tr key={patient.id} className="hover:bg-slate-50/80 transition-colors">
+                    <React.Fragment key={patient.id}>
+                      {showVillageHeader && (
+                        <tr className="bg-gradient-to-r from-teal-100/90 via-teal-50 to-white border-y-2 border-teal-300">
+                          <td colSpan={7} className="px-4 py-2.5">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-lg bg-teal-800 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                                  {vInfo.num}
+                                </span>
+                                <span className="font-bold text-teal-950 text-sm font-['Prompt',sans-serif]">
+                                  {vInfo.fullName} ({vInfo.name})
+                                </span>
+                                <span className="text-teal-800 bg-white border border-teal-300 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-2xs">
+                                  {countInThisVillage} ราย
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-teal-900 font-semibold flex items-center gap-2 flex-wrap">
+                                <span className="text-teal-700">กลุ่ม 1: <strong>{filteredPatients.filter(p => resolvePatientVillage(p).num === vInfo.num && p.ltcGroup === 1).length}</strong></span>
+                                <span>•</span>
+                                <span className="text-sky-700">กลุ่ม 2: <strong>{filteredPatients.filter(p => resolvePatientVillage(p).num === vInfo.num && p.ltcGroup === 2).length}</strong></span>
+                                <span>•</span>
+                                <span className="text-amber-700">กลุ่ม 3: <strong>{filteredPatients.filter(p => resolvePatientVillage(p).num === vInfo.num && p.ltcGroup === 3).length}</strong></span>
+                                <span>•</span>
+                                <span className="text-rose-700">กลุ่ม 4: <strong>{filteredPatients.filter(p => resolvePatientVillage(p).num === vInfo.num && p.ltcGroup === 4).length}</strong></span>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      <tr className="hover:bg-slate-50/80 transition-colors">
                       {/* Patient Avatar & Name */}
                       <td className="px-4 py-3.5">
                         <div className="flex items-center space-x-3">
@@ -949,8 +1364,9 @@ export const ElderlyRegistryTab: React.FC<ElderlyRegistryTabProps> = ({
                         </div>
                       </td>
                     </tr>
-                  );
-                })
+                  </React.Fragment>
+                );
+              })
               )}
             </tbody>
           </table>
